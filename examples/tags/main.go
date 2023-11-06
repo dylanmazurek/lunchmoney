@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/icco/lunchmoney"
+	"github.com/dylanmazurek/lunchmoney"
 )
 
 func main() {
