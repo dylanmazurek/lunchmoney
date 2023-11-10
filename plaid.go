@@ -1,13 +1,7 @@
 package lunchmoney
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
 	"time"
-
-	"github.com/Rhymond/go-money"
-	"github.com/go-playground/validator/v10"
 )
 
 // PlaidAccountsResponse is a list plaid accounts response.
@@ -32,29 +26,29 @@ type PlaidAccount struct {
 	Limit             int64     `json:"limit"`
 }
 
-// ParsedAmount turns the currency from lunchmoney into a Go currency.
-func (p *PlaidAccount) ParsedAmount() (*money.Money, error) {
-	return ParseCurrency(p.Balance, p.Currency)
-}
+// // ParsedAmount turns the currency from lunchmoney into a Go currency.
+// func (p *PlaidAccount) ParsedAmount() (*money.Money, error) {
+// 	return ParseCurrency(p.Balance, p.Currency)
+// }
 
-// GetPlaidAccounts gets all plaid accounts filtered by the filters.
-func (c *Client) GetPlaidAccounts(ctx context.Context) ([]*PlaidAccount, error) {
-	validate := validator.New()
-	options := map[string]string{}
+// // GetPlaidAccounts gets all plaid accounts filtered by the filters.
+// func (c *Client) GetPlaidAccounts(ctx context.Context) ([]*PlaidAccount, error) {
+// 	validate := validator.New()
+// 	options := map[string]string{}
 
-	body, err := c.Get(ctx, "/v1/plaid_accounts", options)
-	if err != nil {
-		return nil, fmt.Errorf("get plaid accounts: %w", err)
-	}
+// 	body, err := c.Get(ctx, "/v1/plaid_accounts", options)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("get plaid accounts: %w", err)
+// 	}
 
-	resp := &PlaidAccountsResponse{}
-	if err := json.NewDecoder(body).Decode(resp); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
+// 	resp := &PlaidAccountsResponse{}
+// 	if err := json.NewDecoder(body).Decode(resp); err != nil {
+// 		return nil, fmt.Errorf("decode response: %w", err)
+// 	}
 
-	if err := validate.Struct(resp); err != nil {
-		return nil, err
-	}
+// 	if err := validate.Struct(resp); err != nil {
+// 		return nil, err
+// 	}
 
-	return resp.PlaidAccounts, nil
-}
+// 	return resp.PlaidAccounts, nil
+// }

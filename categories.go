@@ -1,23 +1,28 @@
 package lunchmoney
 
-import "time"
+import (
+	"context"
+	"fmt"
+	"net/http"
 
-// CategoriesResponse is the response we get from requesting categories.
-type CategoriesResponse struct {
-	Categories []*Category `json:"categories"`
-	Error      string      `json:"error"`
-}
+	"github.com/dylanmazurek/lunchmoney/models"
+)
 
-// Category is a single LM category.
-type Category struct {
-	ID                int64     `json:"id"`
-	Name              string    `json:"name"`
-	Description       string    `json:"description"`
-	IsIncome          bool      `json:"is_income"`
-	ExcludeFromBudget bool      `json:"exclude_from_budget"`
-	ExcludeFromTotals bool      `json:"exclude_from_totals"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	CreatedAt         time.Time `json:"created_at"`
-	IsGroup           bool      `json:"is_group"`
-	GroupID           int64     `json:"group_id"`
+// GetCategories gets all categories
+func (c *Client) GetCategories(ctx context.Context) (categories []*models.Category, err error) {
+	path := "/v1/categories"
+
+	reqOptions := models.RequestOptions{
+		Method:      http.MethodGet,
+		Path:        path,
+		QueryValues: nil,
+		ReqBody:     nil,
+	}
+
+	resp, err := Request[models.CategoriesResponse](ctx, c, reqOptions)
+	if err != nil {
+		return nil, fmt.Errorf("get categories: %w", err)
+	}
+
+	return resp.Categories, nil
 }

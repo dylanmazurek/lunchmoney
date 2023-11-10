@@ -5,12 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 
-	"github.com/Rhymond/go-money"
+	"github.com/dylanmazurek/lunchmoney/models"
+	"github.com/google/go-querystring/query"
 )
 
 const (
@@ -29,7 +28,7 @@ func (adt *addAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response,
 	}
 
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", adt.Key))
-	req.Header.Add("User-Agent", "github.com/icco/lunchmoney/0.0.0")
+	req.Header.Add("User-Agent", "github.com/dylanmazurek/lunchmoney/0.0.0")
 
 	return adt.T.RoundTrip(req)
 }
@@ -55,157 +54,53 @@ func NewClient(apikey string) (*Client, error) {
 	}, nil
 }
 
-// ErrorResponse is json if we get an error from the LM API.
-type ErrorResponse struct {
-	ErrorString   string `json:"error,omitempty"`
-	ErrorName     string `json:"name,omitempty"`
-	MessageString string `json:"message,omitempty"`
+type ResponseType interface {
+	models.TransactionsResponse | models.CategoriesResponse | models.AssetsResponse
 }
 
-func (e *ErrorResponse) Error() string {
-	if e.ErrorString != "" {
-		return e.ErrorString
-	}
-
-	if e.MessageString != "" {
-		return e.MessageString
-	}
-
-	if e.ErrorName != "" {
-		return e.ErrorName
-	}
-
-	return ""
-}
-
-// Get makes a request using the client to the path specified with the
-// key/value pairs specified in options. It returns the body of the response or
-// an error.
-func (c *Client) Get(ctx context.Context, path string, options map[string]string) (io.Reader, error) {
-	u, err := url.Parse(c.Base.String())
+// Request makes a request using the client
+func Request[T ResponseType](ctx context.Context, c *Client, reqOptions models.RequestOptions) (transResp *T, err error) {
+	url, err := url.Parse(c.Base.String())
 	if err != nil {
 		return nil, fmt.Errorf("bad path: %w", err)
 	}
 
-	u.Path = path
-	query := u.Query()
-	for k, v := range options {
-		query.Set(k, v)
-	}
-	u.RawQuery = query.Encode()
-
-	req := &http.Request{Method: http.MethodGet, URL: u}
-	resp, err := c.HTTP.Do(req)
+	url.Path = reqOptions.Path
+	vals, err := query.Values(reqOptions.QueryValues)
 	if err != nil {
-		return nil, fmt.Errorf("request (%+v) failed: %w", req, err)
+		return nil, fmt.Errorf("bad query values: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		var buf bytes.Buffer
-		tee := io.TeeReader(resp.Body, &buf)
-		errResp := ErrorResponse{}
-		if err := json.NewDecoder(tee).Decode(&errResp); err != nil {
-			return nil, fmt.Errorf("could not decode error response %s: %w", buf.String(), err)
+	url.RawQuery = vals.Encode()
+
+	req, err := http.NewRequest(reqOptions.Method, url.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("could not create new request: %w", err)
+	}
+
+	req.Close = true
+
+	if reqOptions.ReqBody != nil {
+		jsonReqBody, err := json.Marshal(reqOptions.ReqBody)
+		if err != nil {
+			return nil, fmt.Errorf("could not marshal request body: %w", err)
 		}
 
-		// log.Printf("%s -> %+v", buf.String(), errResp)
-		if errResp.Error() != "" {
-			return nil, fmt.Errorf("%s: %s", resp.Status, errResp.Error())
-		}
-
-		return nil, fmt.Errorf("%s", resp.Status)
+		req, _ = http.NewRequest(reqOptions.Method, url.String(), bytes.NewBuffer(jsonReqBody))
+		req.Header.Set("Content-Type", "application/json")
 	}
-
-	return resp.Body, nil
-}
-
-func (c *Client) Put(ctx context.Context, path string, body []byte, options map[string]string) (io.Reader, error) {
-	u, err := url.Parse(c.Base.String())
-	if err != nil {
-		return nil, fmt.Errorf("bad path: %w", err)
-	}
-
-	u.Path = path
-	query := u.Query()
-	for k, v := range options {
-		query.Set(k, v)
-	}
-	u.RawQuery = query.Encode()
-
-	req, _ := http.NewRequest(http.MethodPut, u.String(), bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request (%+v) failed: %w", req, err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		var buf bytes.Buffer
-		tee := io.TeeReader(resp.Body, &buf)
-		errResp := ErrorResponse{}
-		if err := json.NewDecoder(tee).Decode(&errResp); err != nil {
-			return nil, fmt.Errorf("could not decode error response %s: %w", buf.String(), err)
-		}
+	defer resp.Body.Close()
 
-		// log.Printf("%s -> %+v", buf.String(), errResp)
-		if errResp.Error() != "" {
-			return nil, fmt.Errorf("%s: %s", resp.Status, errResp.Error())
-		}
-
-		return nil, fmt.Errorf("%s", resp.Status)
-	}
-
-	return resp.Body, nil
-}
-
-func (c *Client) Post(ctx context.Context, path string, body []byte, options map[string]string) (io.Reader, error) {
-	u, err := url.Parse(c.Base.String())
+	err = json.NewDecoder(resp.Body).Decode(&transResp)
 	if err != nil {
-		return nil, fmt.Errorf("bad path: %w", err)
+		return nil, fmt.Errorf("could not decode error response: %w", err)
 	}
 
-	u.Path = path
-	query := u.Query()
-	for k, v := range options {
-		query.Set(k, v)
-	}
-	u.RawQuery = query.Encode()
-
-	req, _ := http.NewRequest(http.MethodPost, u.String(), bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request (%+v) failed: %w", req, err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		var buf bytes.Buffer
-		tee := io.TeeReader(resp.Body, &buf)
-		errResp := ErrorResponse{}
-		if err := json.NewDecoder(tee).Decode(&errResp); err != nil {
-			return nil, fmt.Errorf("could not decode error response %s: %w", buf.String(), err)
-		}
-
-		// log.Printf("%s -> %+v", buf.String(), errResp)
-		if errResp.Error() != "" {
-			return nil, fmt.Errorf("%s: %s", resp.Status, errResp.Error())
-		}
-
-		return nil, fmt.Errorf("%s", resp.Status)
-	}
-
-	return resp.Body, nil
-}
-
-// ParseCurrency turns two strings into a money struct.
-func ParseCurrency(amount, currency string) (*money.Money, error) {
-	f, err := strconv.ParseFloat(amount, 64)
-	if err != nil {
-		return nil, fmt.Errorf("%q is not valid float: %w", amount, err)
-	}
-
-	v := int64(100 * f)
-	return money.New(v, currency), nil
+	return transResp, nil
 }
