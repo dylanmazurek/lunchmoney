@@ -1,14 +1,23 @@
 package models
 
+import "time"
+
 // AssetUpdateRequest
 type AssetUpdateRequest struct {
 	Balance string `json:"balance"`
 }
 
 type AssetsResponse struct {
-	Errors *[]string `json:"error,omitempty"`
+	Errors *[]string `json:"errors,omitempty"`
 
-	// update
-	Updated bool     `json:"updated,omitempty"`
-	Split   *[]int64 `json:"split,omitempty"`
+	ID                  int       `json:"id"`
+	TypeName            string    `json:"type_name"`
+	SubtypeName         string    `json:"subtype_name"`
+	Name                string    `json:"name"`
+	Balance             string    `json:"balance"`
+	BalanceAsOf         time.Time `json:"balance_as_of"`
+	Currency            string    `json:"currency"`
+	InstitutionName     string    `json:"institution_name"`
+	ExcludeTransactions bool      `json:"exclude_transactions"`
+	CreatedAt           string    `json:"created_at"`
 }

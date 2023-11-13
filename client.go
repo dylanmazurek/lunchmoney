@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -97,9 +99,17 @@ func Request[T ResponseType](ctx context.Context, c *Client, reqOptions models.R
 
 	defer resp.Body.Close()
 
-	err = json.NewDecoder(resp.Body).Decode(&transResp)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("could not decode error response: %w", err)
+		return nil, err
+	}
+
+	err = json.Unmarshal(bodyBytes, &transResp)
+	if err != nil {
+		//var serverError models.ErrorResponse
+		//serverError = unmarshalServerError(bodyBytes)
+
+		return nil, errors.New("unable to unmarshal")
 	}
 
 	return transResp, nil

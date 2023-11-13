@@ -1,6 +1,6 @@
 module github.com/dylanmazurek/lunchmoney
 
-go 1.21.3
+go 1.21
 
 require (
 	github.com/Rhymond/go-money v1.0.3
