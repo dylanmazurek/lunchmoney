@@ -9,20 +9,18 @@ import (
 )
 
 // GetCategories gets all categories
-func (c *Client) GetCategories(ctx context.Context) (categories []*models.Category, err error) {
+func (c *Client) GetCategories(ctx context.Context) (categories *[]models.Category, err error) {
 	path := "/v1/categories"
 
 	reqOptions := models.RequestOptions{
-		Method:      http.MethodGet,
-		Path:        path,
-		QueryValues: nil,
-		ReqBody:     nil,
+		Method: http.MethodGet,
+		Path:   path,
 	}
 
-	resp, err := Request[models.CategoriesResponse](ctx, c, reqOptions)
+	respBody, err := Request(ctx, c, reqOptions)
 	if err != nil {
 		return nil, fmt.Errorf("get categories: %w", err)
 	}
 
-	return resp.Categories, nil
+	return respBody.Categories, nil
 }

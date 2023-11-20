@@ -2,10 +2,8 @@ package lunchmoney
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/dylanmazurek/lunchmoney/models"
 )
@@ -21,20 +19,16 @@ func (c *Client) GetTransaction(ctx context.Context, id int64) (*models.Transact
 		ReqBody:     nil,
 	}
 
-	resp, err := Request[models.TransactionsResponse](ctx, c, reqOptions)
+	respBody, err := Request(ctx, c, reqOptions)
 	if err != nil {
 		return nil, fmt.Errorf("get transaction %d: %w", id, err)
 	}
 
-	if resp.Errors != nil {
-		return nil, errors.New(strings.Join(*resp.Errors, ", "))
-	}
-
-	return resp.Transaction, nil
+	return respBody.Transaction, nil
 }
 
 // GetTransactions gets all transactions filtered by the filters.
-func (c *Client) GetTransactions(ctx context.Context, filter *models.TransactionFilter) ([]*models.Transaction, error) {
+func (c *Client) GetTransactions(ctx context.Context, filter *models.TransactionFilter) (transactions *[]models.Transaction, err error) {
 	path := "/v1/transactions"
 
 	reqOptions := models.RequestOptions{
@@ -44,60 +38,47 @@ func (c *Client) GetTransactions(ctx context.Context, filter *models.Transaction
 		ReqBody:     nil,
 	}
 
-	resp, err := Request[models.TransactionsResponse](ctx, c, reqOptions)
+	respBody, err := Request(ctx, c, reqOptions)
 	if err != nil {
 		return nil, fmt.Errorf("get transactions: %w", err)
 	}
 
-	if resp.Errors != nil {
-		return nil, errors.New(strings.Join(*resp.Errors, ", "))
-	}
-
-	return resp.Transactions, nil
+	return respBody.Transactions, nil
 }
 
 // InsertTransactions inserts one or multiple new transactions.
-func (c *Client) InsertTransactions(ctx context.Context, body *models.TransactionsInsertRequest) (*models.TransactionsResponse, error) {
+func (c *Client) InsertTransactions(ctx context.Context, body *models.TransactionsInsertRequest) (transactions *[]models.Transaction, wasInserted *bool, err error) {
 	path := "/v1/transactions"
 
 	reqOptions := models.RequestOptions{
-		Method:      http.MethodPost,
-		Path:        path,
-		QueryValues: nil,
-		ReqBody:     body,
+		Method:  http.MethodPost,
+		Path:    path,
+		ReqBody: body,
 	}
 
-	resp, err := Request[models.TransactionsResponse](ctx, c, reqOptions)
+	respBody, err := Request(ctx, c, reqOptions)
 	if err != nil {
-		return nil, fmt.Errorf("insert transactions: %w", err)
+		return nil, nil, fmt.Errorf("insert transactions: %w", err)
 	}
 
-	if resp.Errors != nil {
-		return nil, errors.New(strings.Join(*resp.Errors, ", "))
-	}
-
-	return resp, nil
+	inserted := len(respBody.InsertedIds) > 0
+	return respBody.Transactions, &inserted, err
 }
 
 // UpdateTransaction updates a transaction by id.
-func (c *Client) UpdateTransaction(ctx context.Context, transId int64, body *models.TransactionsUpdateRequest) (resp *models.TransactionsResponse, err error) {
+func (c *Client) UpdateTransaction(ctx context.Context, transId int64, reqBody *models.TransactionsUpdateRequest) (transaction *models.Transaction, wasUpdated *bool, err error) {
 	path := fmt.Sprintf("/v1/transactions/%d", transId)
 
 	reqOptions := models.RequestOptions{
-		Method:      http.MethodPut,
-		Path:        path,
-		QueryValues: nil,
-		ReqBody:     body,
+		Method:  http.MethodPut,
+		Path:    path,
+		ReqBody: reqBody,
 	}
 
-	resp, err = Request[models.TransactionsResponse](ctx, c, reqOptions)
+	respBody, err := Request(ctx, c, reqOptions)
 	if err != nil {
-		return nil, fmt.Errorf("update transaction: %w", err)
+		return nil, nil, fmt.Errorf("update transaction: %w", err)
 	}
 
-	if resp.Errors != nil {
-		return nil, errors.New(strings.Join(*resp.Errors, ", "))
-	}
-
-	return resp, nil
+	return respBody.Transaction, &respBody.Updated, nil
 }

@@ -19,11 +19,3 @@ type Category struct {
 	Order             int64     `json:"order"`
 	Children          []*Category
 }
-
-type CategoriesResponse struct {
-	Error *[]string `json:"error,omitempty"`
-
-	// get/list
-	Category   *Category   `json:"transaction,omitempty"`
-	Categories []*Category `json:"categories,omitempty"`
-}

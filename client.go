@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/dylanmazurek/lunchmoney/models"
 	"github.com/google/go-querystring/query"
@@ -56,12 +57,8 @@ func NewClient(apikey string) (*Client, error) {
 	}, nil
 }
 
-type ResponseType interface {
-	models.TransactionsResponse | models.CategoriesResponse | models.AssetsResponse
-}
-
 // Request makes a request using the client
-func Request[T ResponseType](ctx context.Context, c *Client, reqOptions models.RequestOptions) (transResp *T, err error) {
+func Request(ctx context.Context, c *Client, reqOptions models.RequestOptions) (resp *models.Response, err error) {
 	url, err := url.Parse(c.Base.String())
 	if err != nil {
 		return nil, fmt.Errorf("bad path: %w", err)
@@ -92,25 +89,26 @@ func Request[T ResponseType](ctx context.Context, c *Client, reqOptions models.R
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := c.HTTP.Do(req)
+	httpResp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request (%+v) failed: %w", req, err)
 	}
 
-	defer resp.Body.Close()
+	defer httpResp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(httpResp.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	err = json.Unmarshal(bodyBytes, &transResp)
+	err = json.Unmarshal(bodyBytes, &resp)
 	if err != nil {
-		//var serverError models.ErrorResponse
-		//serverError = unmarshalServerError(bodyBytes)
-
 		return nil, errors.New("unable to unmarshal")
 	}
 
-	return transResp, nil
+	if resp.Errors != nil {
+		err = errors.New(strings.Join(*resp.Errors, ", "))
+	}
+
+	return resp, err
 }
