@@ -40,5 +40,9 @@ func (c *Client) UpdateAsset(ctx context.Context, assetId int64, reqBody *models
 		return nil, fmt.Errorf("update asset: %w", err)
 	}
 
+	if !respBody.Updated {
+		return nil, fmt.Errorf("asset was not updated")
+	}
+
 	return respBody.Asset, err
 }

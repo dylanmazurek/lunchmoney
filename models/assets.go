@@ -17,5 +17,6 @@ type Asset struct {
 
 // AssetUpdateRequest
 type AssetUpdateRequest struct {
-	Balance string `json:"balance"`
+	Balance     string    `json:"balance"`
+	BalanceAsOf time.Time `json:"balance_as_of"`
 }
