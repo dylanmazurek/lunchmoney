@@ -1,25 +1,24 @@
 package models
 
-type RequestOptions struct {
+import "net/url"
+
+type Request struct {
 	Method      string
 	Path        string
-	QueryValues any
+	QueryValues url.Values
 	ReqBody     any
 }
 
 type Response struct {
-	Errors      *[]string `json:"errors,omitempty"`
-	Updated     bool      `json:"updated,omitempty"`
-	InsertedIds []int64   `json:"ids,omitempty"`
+	Errors *[]string `json:"error,omitempty"`
 
-	Split *[]int64 `json:"split,omitempty"`
+	Updated  *bool `json:"updated,omitempty"`
+	Inserted *bool `json:"inserted,omitempty"`
 
-	Transaction  *Transaction   `json:"_,omitempty"`
+	Item *any   `json:",omitempty"`
+	Ids  *[]int `json:"ids,omitempty"`
+
 	Transactions *[]Transaction `json:"transactions,omitempty"`
-
-	Category   *Category   `json:",omitempty"`
-	Categories *[]Category `json:"categories,omitempty"`
-
-	Asset  *Asset   `json:"asset,omitempty"`
-	Assets *[]Asset `json:"assets,omitempty"`
+	Categories   *[]Category    `json:"categories,omitempty"`
+	Assets       *[]Asset       `json:"assets,omitempty"`
 }

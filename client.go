@@ -12,11 +12,10 @@ import (
 	"strings"
 
 	"github.com/dylanmazurek/lunchmoney/models"
-	"github.com/google/go-querystring/query"
+	"github.com/rs/zerolog"
 )
 
 const (
-	// BaseAPIURL is the base url we use for all API requests.
 	BaseAPIURL = "https://dev.lunchmoney.app/"
 )
 
@@ -38,39 +37,40 @@ func (adt *addAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response,
 
 // Client holds our base configuration for our LunchMoney client.
 type Client struct {
-	HTTP *http.Client
-	Base *url.URL
+	HTTP    *http.Client
+	BaseURL *url.URL
+
+	Logger *zerolog.Logger
+
+	TransactionCache models.TransactionCache
 }
 
 // NewClient creates a new client with the specified API key.
-func NewClient(apikey string) (*Client, error) {
-	base, err := url.Parse(BaseAPIURL)
+func NewClient(ctx context.Context, apikey string) (*Client, error) {
+	baseUrl, err := url.Parse(BaseAPIURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid base URI: %w", err)
+		return nil, fmt.Errorf("invalid base url: %w", err)
 	}
 
 	return &Client{
 		HTTP: &http.Client{
 			Transport: &addAuthHeaderTransport{T: http.DefaultTransport, Key: apikey},
 		},
-		Base: base,
+		BaseURL: baseUrl,
+
+		Logger: zerolog.Ctx(ctx),
 	}, nil
 }
 
 // Request makes a request using the client
-func Request(ctx context.Context, c *Client, reqOptions models.RequestOptions) (resp *models.Response, err error) {
-	url, err := url.Parse(c.Base.String())
+func Request(ctx context.Context, c *Client, reqOptions models.Request) (resp *models.Response, err error) {
+	url, err := url.Parse(c.BaseURL.String())
 	if err != nil {
 		return nil, fmt.Errorf("bad path: %w", err)
 	}
 
 	url.Path = reqOptions.Path
-	vals, err := query.Values(reqOptions.QueryValues)
-	if err != nil {
-		return nil, fmt.Errorf("bad query values: %w", err)
-	}
-
-	url.RawQuery = vals.Encode()
+	url.RawQuery = reqOptions.QueryValues.Encode()
 
 	req, err := http.NewRequest(reqOptions.Method, url.String(), nil)
 	if err != nil {
