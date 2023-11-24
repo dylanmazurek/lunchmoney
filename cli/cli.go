@@ -14,6 +14,9 @@ func main() {
 	ctx := context.Background()
 
 	apiKey := flag.String("key", "", "Lunchmoney API key")
+	assetId := flag.Int("asset", 0, "Asset ID for fetching")
+	dateFrom := flag.String("from", "2023-09-01", "")
+	duration := flag.Duration("duration", 30*24*time.Hour, "")
 	flag.Parse()
 
 	if *apiKey == "" {
@@ -27,8 +30,8 @@ func main() {
 		return
 	}
 
-	//listAssets(ctx, client)
-	listTransactions(ctx, client)
+	listAssets(ctx, client)
+	listTransactions(ctx, client, *assetId, *dateFrom, *duration)
 }
 
 func listAssets(ctx context.Context, client *lunchmoney.Client) {
@@ -39,20 +42,25 @@ func listAssets(ctx context.Context, client *lunchmoney.Client) {
 	}
 
 	for _, asset := range *assets {
-		fmt.Printf("asset: %s\n", asset.Name)
+		fmt.Printf("asset: [%d] %s - %s\n", asset.ID, asset.Name, asset.InstitutionName)
 	}
+
+	fmt.Printf("asset total: %d\n", len(*assets))
 }
 
-func listTransactions(ctx context.Context, client *lunchmoney.Client) {
-	from, _ := time.Parse("2006-01-02", "2023-09-01")
-	to, _ := time.Parse("2006-01-02", "2023-09-30")
+func listTransactions(ctx context.Context, client *lunchmoney.Client, assetId int, fromString string, duration time.Duration) {
+	dateFrom, _ := time.Parse("2006-01-02", fromString)
+	dateTo := dateFrom.Add(duration)
+
+	fmt.Printf("transaction between %s - %s\n", dateFrom.Format("2006-01-02"), dateTo.Format("2006-01-02"))
 
 	filter := &models.TransactionFilter{
-		StartDate: &from,
-		EndDate:   &to,
+		StartDate: &dateFrom,
+		EndDate:   &dateTo,
 	}
 
-	filter.Set(61147, nil, nil)
+	limit := 1000
+	filter.Set(assetId, nil, &limit)
 
 	transactions, err := client.ListTransactions(ctx, filter)
 	if err != nil {
@@ -61,6 +69,8 @@ func listTransactions(ctx context.Context, client *lunchmoney.Client) {
 	}
 
 	for _, transaction := range transactions {
-		fmt.Printf("transaction: %s\n", transaction.Payee)
+		fmt.Printf("transaction: [%d] %s\n", transaction.ID, transaction.Payee)
 	}
+
+	fmt.Printf("trans total: %d\n", len(transactions))
 }
