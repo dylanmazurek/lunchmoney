@@ -48,25 +48,24 @@ func (c *Client) ListAssets(ctx context.Context) (assets *[]models.Asset, err er
 }
 
 // UpdateAsset updates a transaction by id.
-func (c *Client) UpdateAsset(ctx context.Context, assetId int64, reqBody *models.Request) (asset *models.Asset, err error) {
+func (c *Client) UpdateAsset(ctx context.Context, assetId int64, asset models.Asset) (*models.Asset, error) {
 	path := fmt.Sprintf("/v1/assets/%d", assetId)
 
 	reqOptions := models.Request{
 		Method:  http.MethodPut,
 		Path:    path,
-		ReqBody: reqBody,
+		ReqBody: asset,
 	}
 
-	response, err := Request(ctx, c, reqOptions)
+	resp, err := Request(ctx, c, reqOptions)
 	if err != nil {
 		return nil, fmt.Errorf("update asset: %w", err)
 	}
 
-	wasUpdated := response.Updated
+	wasUpdated := resp.Updated
 	if wasUpdated == nil || !*wasUpdated {
 		return nil, fmt.Errorf("asset was not updated")
 	}
 
-	asset = (*response.Item).(*models.Asset)
-	return asset, err
+	return resp.Item, err
 }

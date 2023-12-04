@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/Rhymond/go-money"
 )
@@ -16,7 +17,8 @@ type Asset struct {
 	ExcludeTransactions bool   `json:"exclude_transactions"`
 	CreatedAt           string `json:"created_at"`
 
-	Balance money.Money `json:"-"`
+	Balance     money.Money `json:"-"`
+	BalanceAsOf time.Time   `json:"balance_as_of"`
 }
 
 func (a *Asset) MarshalJSON() ([]byte, error) {
@@ -41,6 +43,6 @@ func (a *Asset) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
