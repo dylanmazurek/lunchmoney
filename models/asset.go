@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/Rhymond/go-money"
+	"github.com/dylanmazurek/lunchmoney/util/money"
 )
 
 type Asset struct {
