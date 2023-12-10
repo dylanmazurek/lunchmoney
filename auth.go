@@ -2,15 +2,14 @@ package lunchmoney
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
-	"runtime"
-	"time"
 
-	"github.com/hasura/go-graphql-client"
+	"github.com/dylanmazurek/lunchmoney/models"
 	"github.com/infamousjoeg/go-keyconfig"
-	"github.com/lestrrat-go/jwx/jwt"
 	"github.com/rs/zerolog/log"
 )
 
@@ -20,11 +19,14 @@ const (
 
 type AuthClient struct {
 	secretStore *models.SecretStore
+
+	BaseURL string
 }
 
-func NewAuthClient(ctx context.Context) (*AuthClient, error) {
+func NewAuthClient(ctx context.Context, baseUrl string) (*AuthClient, error) {
 	authClient := &AuthClient{
 		secretStore: &models.SecretStore{},
+		BaseURL:     baseUrl,
 	}
 
 	return authClient, nil
@@ -36,69 +38,42 @@ type addAuthHeaderTransport struct {
 }
 
 func (adt *addAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	clientVersion := runtime.Version()
+	clientVersion := "v0.0.1"
 
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", adt.APIKey))
-	req.Header.Add("User-Agent", fmt.Sprintf("github.com/dylanmazurek/lunchmoney/%s", clientVersion))
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", *adt.APIKey))
+	req.Header.Add("User-Agent", fmt.Sprintf("github.com/dylanmazurek/lunchmoney@%s", clientVersion))
 
 	return adt.T.RoundTrip(req)
 }
 
 func (c *AuthClient) InitTransportSession(ctx context.Context) (*http.Client, error) {
+	newLogin := false
 	err := keyconfig.GetConfig(SecretStoreKey, &c.secretStore)
-	if err != nil || c.secretStore == nil || c.secretStore.Session == nil {
-		log.Debug().Msg("session not found, logging in")
+	if err != nil || c.secretStore == nil || c.secretStore.APIKey == nil || *c.secretStore.APIKey == "" {
+		log.Debug().Msg("api key not found, logging in")
 
 		err = c.login(ctx)
 
 		if err != nil {
-			log.Error().Msg("unable login")
-
 			return nil, err
 		}
-	} else {
-		log.Debug().Msg("session found, validating")
+
+		newLogin = true
 	}
 
-	tokenPair := c.secretStore.Session.TokenPair
+	if !newLogin {
+		log.Debug().Msg("api key found, validating")
 
-	authToken := tokenPair.AuthToken
-	err = jwt.Validate(authToken)
-	authTokenValid := (err == nil)
-
-	if authTokenValid {
-		authTokenExpiry := tokenPair.AuthToken.Expiration()
-		log.Debug().Msgf("auth token valid for %.0f min", time.Until(authTokenExpiry).Minutes())
-
-		authTransport, err := c.createAuthTransport(ctx)
-
-		return authTransport, err
-	}
-
-	log.Debug().Msg("auth token not valid")
-
-	refreshToken := tokenPair.RefreshToken
-	err = jwt.Validate(refreshToken)
-	refreshTokenValid := (err == nil)
-
-	if refreshTokenValid {
-		refreshTokenExpiry := tokenPair.AuthToken.Expiration()
-		log.Debug().Msgf("refresh token valid for %.0f min, refreshing auth token", time.Until(refreshTokenExpiry).Minutes())
-
-		err = c.refreshToken(ctx)
+		_, err = c.getKeyUser()
 		if err != nil {
-			return nil, err
+			log.Debug().Msg("api key invalid, logging in")
+
+			err = c.login(ctx)
+
+			if err != nil {
+				return nil, err
+			}
 		}
-
-		authTransport, err := c.createAuthTransport(ctx)
-		return authTransport, err
-	}
-
-	log.Info().Msg("refresh token not valid, logging in")
-
-	err = c.login(ctx)
-	if err != nil {
-		return nil, err
 	}
 
 	authTransport, err := c.createAuthTransport(ctx)
@@ -107,131 +82,101 @@ func (c *AuthClient) InitTransportSession(ctx context.Context) (*http.Client, er
 }
 
 func (c *AuthClient) login(ctx context.Context) error {
-	if c.secretStore.Email == "" || c.secretStore.Password == "" {
-		email, password, err := c.getLoginDetails()
+	var err error
+	var user models.User
+	var apiKey string
+
+	if c.secretStore == nil || *c.secretStore.APIKey == "" {
+		apiKey, user, err = c.getLoginDetails()
 		if err != nil {
 			return err
 		}
-
-		c.secretStore = &models.SecretStore{
-			Email:    email,
-			Password: password,
-		}
-
-		log.Debug().Msg("credentials stored")
 	}
 
-	var resp models.LoginResponse
-	variables := map[string]interface{}{
-		"input": models.LoginInput{
-			Email:    c.secretStore.Email,
-			Password: c.secretStore.Password,
-		},
+	c.secretStore = &models.SecretStore{
+		UserID:    &user.UserID,
+		AccountID: &user.AccountID,
+		APIKey:    &apiKey,
 	}
-
-	err := c.graphQLClient.Mutate(context.Background(), &resp, variables, graphql.OperationName("Login"))
-	if err != nil {
-		return err
-	}
-
-	auth := resp.LoginFunction.Auth
-
-	c.secretStore.SetSession(auth.ID, auth.AuthToken, auth.RefreshToken)
 
 	err = keyconfig.SetConfig(SecretStoreKey, c.secretStore)
 	if err != nil {
 		return err
 	}
 
-	log.Info().Msgf("login successful user id: %s", auth.ID)
-
-	newTokenPair := c.secretStore.Session.TokenPair
-	log.Debug().Msgf("auth token expires in %.0f min", time.Until(newTokenPair.AuthToken.Expiration()).Minutes())
-	log.Debug().Msgf("refresh token expires in %.0f min", time.Until(newTokenPair.RefreshToken.Expiration()).Minutes())
+	log.Info().Msgf("api key confirmed for %s", user.UserEmail)
 
 	return nil
 }
 
-func (c *AuthClient) getLoginDetails() (string, string, error) {
-	var email string
-	flag.StringVar(&email, "email", "", "spaceship email address")
+func (c *AuthClient) getKeyUser() (*models.User, error) {
+	path := fmt.Sprintf("%s/%s", c.BaseURL, "me")
 
-	var password string
-	flag.StringVar(&password, "password", "", "spaceship password")
-
-	flag.Parse()
-
-	var err error
-	for email == "" || err != nil {
-		fmt.Print("email address: ")
-		n, err := fmt.Scanf("%s\n", &email)
-
-		if err != nil || n != 1 {
-			fmt.Println("invalid username entered")
-		}
-
-		err = nil
-	}
-
-	for password == "" || err != nil {
-		fmt.Print("password: ")
-		n, err := fmt.Scanf("%s\n", &password)
-
-		if err != nil || n != 1 {
-			fmt.Println("invalid password entered")
-		}
-
-		err = nil
-	}
-
-	return email, password, err
-}
-
-func (c *AuthClient) refreshToken(ctx context.Context) error {
-	_, rawRefreshToken, err := c.secretStore.GetRawTokenPair()
-	if err != nil {
-		return err
-	}
-
-	var resp models.RefreshTokenResponse
-	variables := map[string]interface{}{
-		"input": models.RefreshTokenInput{
-			RefreshToken: rawRefreshToken,
-		},
-	}
-
-	err = c.graphQLClient.Mutate(context.Background(), &resp, variables, graphql.OperationName("RefreshToken"))
-	if err != nil {
-		return err
-	}
-
-	auth := resp.RefreshTokenFunction.Auth
-	c.secretStore.SetSession(auth.ID, auth.AuthToken, auth.RefreshToken)
-
-	err = keyconfig.SetConfig(SecretStoreKey, c.secretStore)
-	if err != nil {
-		return err
-	}
-
-	log.Info().Msgf("auth token refresh successful user id: %s", auth.ID)
-
-	newTokenPair := c.secretStore.Session.TokenPair
-	log.Debug().Msgf("auth token expires in %.0f min", time.Until(newTokenPair.AuthToken.Expiration()).Minutes())
-	log.Debug().Msgf("refresh token expires in %.0f min", time.Until(newTokenPair.RefreshToken.Expiration()).Minutes())
-
-	return nil
-}
-
-func (c *AuthClient) createAuthTransport(ctx context.Context) (*http.Client, error) {
-	rawAuthToken, _, err := c.secretStore.GetRawTokenPair()
+	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
 		return nil, err
 	}
 
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", *c.secretStore.APIKey))
+
+	resp, err := http.DefaultClient.Do(req)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("invalid api key")
+	}
+
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var me models.User
+	err = json.Unmarshal(bodyBytes, &me)
+	if err != nil {
+		return nil, err
+	}
+
+	return &me, nil
+}
+
+func (c *AuthClient) getLoginDetails() (string, models.User, error) {
+	var apiKey string
+	flag.StringVar(&apiKey, "apikey", "", "lunchmoney api key")
+	flag.Parse()
+
+	var err error
+	var keyUser *models.User
+
+	for apiKey == "" || err != nil {
+		fmt.Print("api key: ")
+		n, err := fmt.Scanf("%s\n", &apiKey)
+
+		if err != nil || n != 1 {
+			fmt.Println("invalid api key entered")
+		}
+
+		c.secretStore.APIKey = &apiKey
+
+		keyUser, err = c.getKeyUser()
+		if err != nil {
+			log.Info().Msg("unable to validate key")
+		}
+	}
+
+	return apiKey, *keyUser, nil
+}
+
+func (c *AuthClient) createAuthTransport(ctx context.Context) (*http.Client, error) {
 	authClient := &http.Client{
 		Transport: &addAuthHeaderTransport{
-			T:            http.DefaultTransport,
-			RawAuthToken: &rawAuthToken,
+			T:      http.DefaultTransport,
+			APIKey: c.secretStore.APIKey,
 		},
 	}
 
