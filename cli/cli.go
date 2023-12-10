@@ -2,75 +2,92 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"time"
+	"os"
 
 	"github.com/dylanmazurek/lunchmoney"
 	"github.com/dylanmazurek/lunchmoney/models"
+	"github.com/markkurossi/tabulate"
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
 	ctx := context.Background()
 
-	apiKey := flag.String("key", "", "Lunchmoney API key")
-	assetId := flag.Int("asset", 0, "Asset ID for fetching")
-	dateFrom := flag.String("from", "2023-09-01", "")
-	duration := flag.Duration("duration", 30*24*time.Hour, "")
-	flag.Parse()
-
-	if *apiKey == "" {
-		fmt.Println("Lunchmoney API key is required")
-		return
-	}
-
-	client, err := lunchmoney.NewClient(ctx, *apiKey)
+	client, err := lunchmoney.New(ctx)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	listAssets(ctx, client)
-	listTransactions(ctx, client, *assetId, *dateFrom, *duration)
+	err = client.InitClient(ctx)
+	if err != nil {
+		log.Error().Err(err)
+		return
+	}
+
+	// assetList, err := client.ListAsset(ctx)
+	// if err != nil {
+	// 	log.Err(err).Msg("failed to list assets")
+	// 	return
+	// }
+
+	// printAssets(assetList.Assets)
+
+	transactionList, err := client.ListTransaction(ctx)
+	if err != nil {
+		log.Err(err).Msg("failed to list assets")
+		return
+	}
+
+	printTransactions(transactionList.Transactions)
 }
 
-func listAssets(ctx context.Context, client *lunchmoney.Client) {
-	assets, err := client.ListAssets(ctx)
-	if err != nil {
-		fmt.Println(err)
-		return
+func printAssets(assets []models.Asset) {
+	tab := tabulate.New(tabulate.Unicode)
+
+	tab.Header("ID")
+	tab.Header("TYPE")
+	tab.Header("NAME")
+
+	tab.Header("BALANCE")
+	tab.Header("LAST UPDATED")
+	tab.Header("INSTITUTION")
+
+	for _, asset := range assets {
+		row := tab.Row()
+
+		row.Column(fmt.Sprintf("%d", asset.ID))
+		row.Column(*asset.TypeName)
+		row.Column(*asset.Name)
+		row.Column(asset.Balance.Display())
+		row.Column(asset.BalanceAsOf.Format("2006-01-02"))
+		row.Column(asset.InstitutionName)
 	}
 
-	for _, asset := range *assets {
-		fmt.Printf("asset: [%d] %s - %s\n", asset.ID, asset.Name, asset.InstitutionName)
-	}
-
-	fmt.Printf("asset total: %d\n", len(*assets))
+	tab.Print(os.Stdout)
 }
 
-func listTransactions(ctx context.Context, client *lunchmoney.Client, assetId int, fromString string, duration time.Duration) {
-	dateFrom, _ := time.Parse("2006-01-02", fromString)
-	dateTo := dateFrom.Add(duration)
+func printTransactions(transactions []models.Transaction) {
+	tab := tabulate.New(tabulate.Unicode)
 
-	fmt.Printf("transaction between %s - %s\n", dateFrom.Format("2006-01-02"), dateTo.Format("2006-01-02"))
-
-	filter := &models.TransactionFilter{
-		StartDate: &dateFrom,
-		EndDate:   &dateTo,
-	}
-
-	limit := 1000
-	filter.Set(assetId, nil, &limit)
-
-	transactions, err := client.ListTransactions(ctx, filter)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	tab.Header("ID")
+	tab.Header("DATE")
+	tab.Header("AMOUNT")
+	tab.Header("PAYEE")
+	tab.Header("ASSET")
 
 	for _, transaction := range transactions {
-		fmt.Printf("transaction: [%d] %s\n", transaction.ID, transaction.Payee)
+		row := tab.Row()
+
+		row.Column(fmt.Sprintf("%d", transaction.ID))
+		row.Column(transaction.Date.Format("2006-01-02"))
+		row.Column(transaction.Amount.Display())
+		row.Column(*transaction.Payee)
+
+		val, _ := transaction.AssetID.Float64()
+		row.Column(fmt.Sprintf("%.2f", val))
 	}
 
-	fmt.Printf("trans total: %d\n", len(transactions))
+	tab.Print(os.Stdout)
 }
