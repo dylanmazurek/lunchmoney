@@ -38,10 +38,8 @@ type addAuthHeaderTransport struct {
 }
 
 func (adt *addAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	clientVersion := "v0.0.1"
-
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", *adt.APIKey))
-	req.Header.Add("User-Agent", fmt.Sprintf("github.com/dylanmazurek/lunchmoney@%s", clientVersion))
+	req.Header.Add("User-Agent", "github.com/dylanmazurek/lunchmoney")
 
 	return adt.T.RoundTrip(req)
 }
