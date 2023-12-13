@@ -51,7 +51,9 @@ func (c *Client) NewRequest(ctx context.Context, method string, path string, bod
 		return nil, err
 	}
 
-	requestUrl.RawQuery = params.Encode()
+	if params != nil {
+		requestUrl.RawQuery = params.Encode()
+	}
 
 	req, err := http.NewRequest(method, requestUrl.String(), body)
 	if err != nil {
