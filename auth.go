@@ -3,7 +3,6 @@ package lunchmoney
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -81,10 +80,10 @@ func (c *AuthClient) InitTransportSession(ctx context.Context) (*http.Client, er
 
 func (c *AuthClient) login(ctx context.Context) error {
 	var err error
-	var user models.User
+	var user *models.User
 	var apiKey string
 
-	if c.secretStore == nil || *c.secretStore.APIKey == "" {
+	if c.secretStore == nil || c.secretStore.APIKey == nil {
 		apiKey, user, err = c.getLoginDetails()
 		if err != nil {
 			return err
@@ -143,14 +142,11 @@ func (c *AuthClient) getKeyUser() (*models.User, error) {
 	return &me, nil
 }
 
-func (c *AuthClient) getLoginDetails() (string, models.User, error) {
-	var apiKey string
-	flag.StringVar(&apiKey, "apikey", "", "lunchmoney api key")
-	flag.Parse()
-
+func (c *AuthClient) getLoginDetails() (string, *models.User, error) {
 	var err error
 	var keyUser *models.User
 
+	var apiKey string
 	for apiKey == "" || err != nil {
 		fmt.Print("api key: ")
 		n, err := fmt.Scanf("%s\n", &apiKey)
@@ -167,7 +163,7 @@ func (c *AuthClient) getLoginDetails() (string, models.User, error) {
 		}
 	}
 
-	return apiKey, *keyUser, nil
+	return apiKey, keyUser, nil
 }
 
 func (c *AuthClient) createAuthTransport(ctx context.Context) (*http.Client, error) {

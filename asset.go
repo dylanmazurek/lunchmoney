@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -17,7 +18,7 @@ func (c *Client) FetchAsset(ctx context.Context, assetId int64) (*models.Asset, 
 		return nil, err
 	}
 
-	assetIdx := slices.IndexFunc(assets.Assets, func(asset models.Asset) bool { return *asset.ID == assetId })
+	assetIdx := slices.IndexFunc(assets.Assets, func(asset models.Asset) bool { return *asset.AssetID == assetId })
 	if assetIdx == -1 {
 		return nil, nil
 	}
@@ -40,7 +41,7 @@ func (c *Client) ListAsset(ctx context.Context) (*models.AssetList, error) {
 }
 
 func (c *Client) UpdateAsset(ctx context.Context, id int64, asset models.Asset) (*models.Asset, error) {
-	b, err := json.Marshal(asset)
+	b, err := json.Marshal(&asset)
 	if err != nil {
 		return nil, err
 	}
@@ -54,5 +55,22 @@ func (c *Client) UpdateAsset(ctx context.Context, id int64, asset models.Asset) 
 	var updatedAsset models.Asset
 	err = c.Do(ctx, req, &updatedAsset)
 
+	if updatedAsset.Error != nil {
+		err = fmt.Errorf("%s", *updatedAsset.Error)
+	}
+
 	return &updatedAsset, err
+}
+
+func (c *Client) UpdateAssetFromJSON(ctx context.Context, assetJson []byte) (*models.Asset, error) {
+	asset := &models.Asset{}
+	err := json.Unmarshal(assetJson, &asset)
+
+	if asset.AssetID == nil {
+		return nil, errors.New("no asset id set")
+	}
+
+	updatedAsset, err := c.UpdateAsset(ctx, *asset.AssetID, *asset)
+
+	return updatedAsset, err
 }

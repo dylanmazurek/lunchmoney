@@ -60,6 +60,10 @@ func (c *Client) NewRequest(ctx context.Context, method string, path string, bod
 		return nil, err
 	}
 
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
 	request := &models.Request{
 		HTTPRequest: req,
 	}

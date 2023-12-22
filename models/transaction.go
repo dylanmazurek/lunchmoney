@@ -108,3 +108,9 @@ type InsertRequest struct {
 	DebitAsNegative   bool          `json:"debit_as_negative,omitempty"`
 	SkipBalanceUpdate bool          `json:"skip_balance_update,omitempty"`
 }
+
+type InsertResponse struct {
+	Error *string `json:"error,omitempty"`
+
+	Ids []int64 `json:"ids,omitempty"`
+}

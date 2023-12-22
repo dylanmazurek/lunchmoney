@@ -1,7 +1,9 @@
 package lunchmoney
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -163,28 +165,50 @@ func (c *Client) ListTransaction(ctx context.Context) (*models.TransactionList, 
 // 	close(errorChannel)
 // }
 
-// func (c *Client) InsertTransactions(ctx context.Context, transactions []models.Transaction, debitAsNegative bool) (*[]int, error) {
-// 	path := "/v1/transactions"
+func (c *Client) InsertTransactions(ctx context.Context, transactions []models.Transaction, debitAsNegative bool) (*[]int64, error) {
+	path := "/v1/transactions"
 
-// 	insertReqBody := &InsertRequest{
-// 		Transactions:      transactions,
-// 		ApplyRules:        true,
-// 		SkipDuplicates:    true,
-// 		CheckForRecurring: true,
-// 		DebitAsNegative:   debitAsNegative,
-// 		SkipBalanceUpdate: true,
-// 	}
+	insertReqBody := &models.InsertRequest{
+		Transactions:      transactions,
+		ApplyRules:        true,
+		SkipDuplicates:    true,
+		CheckForRecurring: true,
+		DebitAsNegative:   debitAsNegative,
+		SkipBalanceUpdate: true,
+	}
 
-// 	reqOptions := models.Request{
-// 		Method:  http.MethodPost,
-// 		Path:    path,
-// 		ReqBody: insertReqBody,
-// 	}
+	b, err := json.Marshal(&insertReqBody)
+	if err != nil {
+		return nil, err
+	}
 
-// 	respBody, err := Request(ctx, c, reqOptions)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("insert transactions: %w", err)
-// 	}
+	req, err := c.NewRequest(ctx, http.MethodPost, path, bytes.NewReader(b), nil)
+	if err != nil {
+		return nil, err
+	}
 
-// 	return respBody.Ids, nil
-// }
+	var transactionInsertResponse models.InsertResponse
+	err = c.Do(ctx, req, &transactionInsertResponse)
+
+	if transactionInsertResponse.Error != nil {
+		err = fmt.Errorf("%s", *transactionInsertResponse.Error)
+	}
+
+	return &transactionInsertResponse.Ids, err
+}
+
+func (c *Client) InsertTransactionFromJSON(ctx context.Context, transactionJson []byte, debitAsNegative bool) (*[]int64, error) {
+	transaction := models.Transaction{}
+	err := json.Unmarshal(transactionJson, &transaction)
+	if err != nil {
+		return nil, err
+	}
+
+	transactions := []models.Transaction{
+		transaction,
+	}
+
+	insertedIds, err := c.InsertTransactions(ctx, transactions, debitAsNegative)
+
+	return insertedIds, err
+}

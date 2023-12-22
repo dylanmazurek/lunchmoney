@@ -57,7 +57,7 @@ func printAssets(assets []models.Asset) {
 	for _, asset := range assets {
 		row := tab.Row()
 
-		row.Column(fmt.Sprintf("%d", asset.ID))
+		row.Column(fmt.Sprintf("%d", *asset.AssetID))
 		row.Column(*asset.TypeName)
 		row.Column(*asset.Name)
 		row.Column(asset.Balance.Display())

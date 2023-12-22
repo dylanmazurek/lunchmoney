@@ -2,7 +2,7 @@ package models
 
 import (
 	"encoding/json"
-	"math"
+	"fmt"
 	"strings"
 	"time"
 
@@ -29,7 +29,9 @@ func (a *AssetList) UnmarshalJSON(data []byte) error {
 }
 
 type Asset struct {
-	ID                  *int64  `json:"id,omitempty"`
+	Error *string `json:"error,omitempty"`
+
+	AssetID             *int64  `json:"id,omitempty"`
 	TypeName            *string `json:"type_name,omitempty"`
 	SubtypeName         *string `json:"subtype_name,omitempty"`
 	Name                *string `json:"name,omitempty"`
@@ -38,21 +40,22 @@ type Asset struct {
 	ExcludeTransactions *bool   `json:"exclude_transactions,omitempty"`
 	CreatedAt           *string `json:"created_at,omitempty"`
 
-	Balance     money.Money    `json:"-"`
-	Currency    money.Currency `json:"-"`
-	BalanceAsOf *time.Time     `json:"balance_as_of,omitempty"`
+	Balance     money.Money `json:"-"`
+	BalanceAsOf *time.Time  `json:"-"`
 }
 
 func (a *Asset) MarshalJSON() ([]byte, error) {
 	type Alias Asset
 	marshaledJSON, err := json.Marshal(&struct {
 		*Alias
-		BalanceRaw  json.Number `json:"balance"`
-		CurrencyRaw string      `json:"currency"`
+		BalanceRaw     json.Number `json:"balance"`
+		CurrencyRaw    string      `json:"currency"`
+		BalanceAsOfRaw string      `json:"balance_as_of"`
 	}{
-		Alias:       (*Alias)(a),
-		BalanceRaw:  json.Number(a.Balance.Amount()),
-		CurrencyRaw: strings.ToLower(a.Currency.Code),
+		Alias:          (*Alias)(a),
+		BalanceRaw:     json.Number(fmt.Sprintf("%.2f", a.Balance.AsMajorUnits())),
+		CurrencyRaw:    strings.ToLower(a.Balance.Currency().Code),
+		BalanceAsOfRaw: a.BalanceAsOf.UTC().Format(time.RFC3339),
 	})
 
 	return marshaledJSON, err
@@ -62,8 +65,9 @@ func (a *Asset) UnmarshalJSON(data []byte) error {
 	type Alias Asset
 	aux := &struct {
 		*Alias
-		BalanceRaw  json.Number `json:"balance"`
-		CurrencyRaw string      `json:"currency"`
+		BalanceRaw     json.Number `json:"balance"`
+		CurrencyRaw    string      `json:"currency"`
+		BalanceAsOfRaw string      `json:"balance_as_of"`
 	}{
 		Alias: (*Alias)(a),
 	}
@@ -72,13 +76,29 @@ func (a *Asset) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	currency := money.GetCurrency(strings.ToUpper(aux.CurrencyRaw))
-	a.Currency = *currency
+	if aux.BalanceRaw.String() != "" {
+		balanceFloat, err := aux.BalanceRaw.Float64()
+		if err != nil {
+			return err
+		}
 
-	balanceFloat, _ := aux.BalanceRaw.Float64()
-	balanceInCents := int64(math.Round(balanceFloat))
-	balance := money.New(balanceInCents, a.Currency.Code)
-	a.Balance = *balance
+		currency := strings.ToUpper(aux.CurrencyRaw)
+		balance := money.NewFromFloat(balanceFloat, currency)
+		a.Balance = *balance
+	}
+
+	if aux.BalanceAsOfRaw != "" {
+		balanceAsOf, err := time.Parse(time.RFC3339, aux.BalanceAsOfRaw)
+		if err != nil {
+			return err
+		}
+
+		a.BalanceAsOf = &balanceAsOf
+	}
 
 	return nil
 }
+
+// func AssetFromRaw(id int64, balance float64, currency string) money.Money {
+// 	return a.Balance
+// }
