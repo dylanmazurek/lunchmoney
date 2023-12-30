@@ -23,12 +23,12 @@ type TransactionFilter struct {
 	Offset int `url:"offset"`
 }
 
-type TransactionList struct {
+type TransactionResponse struct {
 	Transactions []Transaction `json:"transactions"`
 }
 
-func (a *TransactionList) UnmarshalJSON(data []byte) error {
-	type Alias TransactionList
+func (a *TransactionResponse) UnmarshalJSON(data []byte) error {
+	type Alias TransactionResponse
 	aux := &struct {
 		*Alias
 	}{

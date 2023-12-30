@@ -3,29 +3,32 @@ package lunchmoney
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/dylanmazurek/lunchmoney/models"
-	"github.com/infamousjoeg/go-keyconfig"
+	"github.com/dylanmazurek/lunchmoney/util/constants"
+	"github.com/dylanmazurek/lunchmoney/util/secretstore"
 	"github.com/rs/zerolog/log"
 )
 
 const (
-	SecretStoreKey = "lunchmoney-client"
+	SecretStoreShelfKey = "lunchmoney-client"
 )
 
 type AuthClient struct {
-	secretStore *models.SecretStore
+	httpClient *http.Client
 
-	BaseURL string
+	SecretStore *secretstore.SecretStore
+
+	lunchmoneySecrets *models.Secrets
 }
 
-func NewAuthClient(ctx context.Context, baseUrl string) (*AuthClient, error) {
+func NewAuthClient(ctx context.Context) (*AuthClient, error) {
 	authClient := &AuthClient{
-		secretStore: &models.SecretStore{},
-		BaseURL:     baseUrl,
+		httpClient: &http.Client{Transport: http.DefaultTransport},
 	}
 
 	return authClient, nil
@@ -38,83 +41,77 @@ type addAuthHeaderTransport struct {
 
 func (adt *addAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", *adt.APIKey))
-	req.Header.Add("User-Agent", "github.com/dylanmazurek/lunchmoney")
+	req.Header.Add("User-Agent", constants.Config.SourceUserAgent)
 
 	return adt.T.RoundTrip(req)
 }
 
 func (c *AuthClient) InitTransportSession(ctx context.Context) (*http.Client, error) {
-	newLogin := false
-	err := keyconfig.GetConfig(SecretStoreKey, &c.secretStore)
-	if err != nil || c.secretStore == nil || c.secretStore.APIKey == nil || *c.secretStore.APIKey == "" {
-		log.Debug().Msg("api key not found, logging in")
-
-		err = c.login(ctx)
-
-		if err != nil {
-			return nil, err
-		}
-
-		newLogin = true
+	secretStore, err := secretstore.New(SecretStoreShelfKey)
+	if err != nil {
+		return nil, err
 	}
 
-	if !newLogin {
-		log.Debug().Msg("api key found, validating")
+	c.SecretStore = secretStore
 
-		_, err = c.getKeyUser()
-		if err != nil {
-			log.Debug().Msg("api key invalid, logging in")
-
-			err = c.login(ctx)
-
-			if err != nil {
-				return nil, err
-			}
-		}
+	shelfDataBytes, err := secretStore.GetShelfData()
+	if err != nil {
+		return nil, err
 	}
+
+	err = json.Unmarshal(shelfDataBytes, &c.lunchmoneySecrets)
+	if err != nil {
+		return nil, err
+	}
+
+	currentAPIKey := c.lunchmoneySecrets.APIKey
+	if currentAPIKey == "" {
+		log.Error().Msg("api key is not set")
+
+		return nil, err
+	}
+
+	userData, err := c.getUserData(c.lunchmoneySecrets.APIKey)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Info().Msgf("user data fetched for %s", userData.UserName)
 
 	authTransport, err := c.createAuthTransport(ctx)
 
 	return authTransport, err
 }
 
-func (c *AuthClient) login(ctx context.Context) error {
-	var err error
-	var user *models.User
-	var apiKey string
-
-	if c.secretStore == nil || c.secretStore.APIKey == nil {
-		apiKey, user, err = c.getLoginDetails()
-		if err != nil {
-			return err
-		}
+func (c *AuthClient) SetSecrets(secrets models.Secrets) error {
+	if !secrets.HasSecrets() {
+		return errors.New("no secrets provided")
 	}
 
-	c.secretStore = &models.SecretStore{
-		UserID:    &user.UserID,
-		AccountID: &user.AccountID,
-		APIKey:    &apiKey,
-	}
-
-	err = keyconfig.SetConfig(SecretStoreKey, c.secretStore)
+	jsonSecrets, err := json.Marshal(secrets)
 	if err != nil {
 		return err
 	}
 
-	log.Info().Msgf("api key confirmed for %s", user.UserEmail)
+	err = c.SecretStore.UpdateShelf(SecretStoreShelfKey, jsonSecrets)
+	if err != nil {
+		return err
+	}
+
+	log.Debug().Msg("secrets stored")
 
 	return nil
 }
 
-func (c *AuthClient) getKeyUser() (*models.User, error) {
-	path := fmt.Sprintf("%s/%s", c.BaseURL, "me")
+func (c *AuthClient) getUserData(apiKey string) (*models.User, error) {
+	path := fmt.Sprintf("%s/%s", constants.Config.APIBaseURL, constants.Path.Me)
 
 	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", *c.secretStore.APIKey))
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", apiKey))
 
 	resp, err := http.DefaultClient.Do(req)
 
@@ -142,35 +139,22 @@ func (c *AuthClient) getKeyUser() (*models.User, error) {
 	return &me, nil
 }
 
-func (c *AuthClient) getLoginDetails() (string, *models.User, error) {
-	var err error
-	var keyUser *models.User
-
-	var apiKey string
-	for apiKey == "" || err != nil {
-		fmt.Print("api key: ")
-		n, err := fmt.Scanf("%s\n", &apiKey)
-
-		if err != nil || n != 1 {
-			fmt.Println("invalid api key entered")
-		}
-
-		c.secretStore.APIKey = &apiKey
-
-		keyUser, err = c.getKeyUser()
-		if err != nil {
-			log.Info().Msg("unable to validate key")
-		}
+func (c *AuthClient) createAuthTransport(ctx context.Context) (*http.Client, error) {
+	shelfDataBytes, err := c.SecretStore.GetShelfData()
+	if err != nil {
+		return nil, err
 	}
 
-	return apiKey, keyUser, nil
-}
+	secrets := &models.Secrets{}
+	err = json.Unmarshal(shelfDataBytes, &secrets)
+	if err != nil {
+		return nil, err
+	}
 
-func (c *AuthClient) createAuthTransport(ctx context.Context) (*http.Client, error) {
 	authClient := &http.Client{
 		Transport: &addAuthHeaderTransport{
 			T:      http.DefaultTransport,
-			APIKey: c.secretStore.APIKey,
+			APIKey: &c.lunchmoneySecrets.APIKey,
 		},
 	}
 

@@ -9,12 +9,12 @@ import (
 	"github.com/Rhymond/go-money"
 )
 
-type AssetList struct {
+type AssetResponse struct {
 	Assets []Asset `json:"assets"`
 }
 
-func (a *AssetList) UnmarshalJSON(data []byte) error {
-	type Alias AssetList
+func (a *AssetResponse) UnmarshalJSON(data []byte) error {
+	type Alias AssetResponse
 	aux := &struct {
 		*Alias
 	}{
@@ -98,7 +98,3 @@ func (a *Asset) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
-
-// func AssetFromRaw(id int64, balance float64, currency string) money.Money {
-// 	return a.Balance
-// }

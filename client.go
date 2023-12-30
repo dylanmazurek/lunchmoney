@@ -3,80 +3,78 @@ package lunchmoney
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 
 	"github.com/dylanmazurek/lunchmoney/models"
+	"github.com/dylanmazurek/lunchmoney/util/constants"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
-const (
-	BaseURL = "https://dev.lunchmoney.app/v1"
-)
-
 type Client struct {
-	HTTPClient *http.Client
+	Client *http.Client
+	State  string
 }
 
 func New(ctx context.Context) (*Client, error) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
 
-	return &Client{}, nil
+	return &Client{
+		Client: nil,
+		State:  constants.ClientState.New,
+	}, nil
 }
 
-func (c *Client) InitClient(ctx context.Context) error {
-	authClient, err := NewAuthClient(ctx, BaseURL)
+func (c *Client) InitClient(ctx context.Context, newCredentials *models.Secrets) error {
+	authClient, err := NewAuthClient(ctx)
 	if err != nil {
+		c.State = constants.ClientState.Error
 		return err
 	}
 
 	authTransport, err := authClient.InitTransportSession(ctx)
 	if err != nil {
+		c.State = constants.ClientState.Error
 		return err
 	}
 
-	c.HTTPClient = authTransport
+	if authClient.lunchmoneySecrets == nil || authClient.lunchmoneySecrets.APIKey == "" {
+		if newCredentials == nil {
+			log.Warn().Msg("api key is not set, set API_KEY env")
+			return nil
+		} else {
+			log.Info().Msg("API_KEY env set, saving to store")
+			err := authClient.SetSecrets(*newCredentials)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	c.Client = authTransport
+
+	c.State = constants.ClientState.Authenticated
 
 	return nil
 }
 
-func (c *Client) NewRequest(ctx context.Context, method string, path string, body io.Reader, params *url.Values) (*models.Request, error) {
-	urlString := fmt.Sprintf("%s/%s", BaseURL, path)
-	requestUrl, err := url.Parse(urlString)
+func (c *Client) Do(ctx context.Context, req *http.Request, resp interface{}, query url.Values) error {
+	httpResponse, err := c.Client.Do(req)
 	if err != nil {
-		return nil, err
-	}
+		if httpResponse.StatusCode == http.StatusUnauthorized {
+			log.Debug().Msg("http response unauthorized, logging in")
 
-	if params != nil {
-		requestUrl.RawQuery = params.Encode()
-	}
+			c.InitClient(ctx, nil)
+		}
 
-	req, err := http.NewRequest(method, requestUrl.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	request := &models.Request{
-		HTTPRequest: req,
-	}
-
-	return request, nil
-}
-
-func (c *Client) Do(ctx context.Context, req *models.Request, resp any) error {
-	httpResponse, err := c.HTTPClient.Do(req.HTTPRequest)
-	if err != nil {
 		return err
 	}
 	defer httpResponse.Body.Close()
+
+	req.URL.RawQuery = query.Encode()
 
 	bodyBytes, err := io.ReadAll(httpResponse.Body)
 	if err != nil {
