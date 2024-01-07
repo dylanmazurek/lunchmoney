@@ -15,20 +15,28 @@ import (
 )
 
 const (
-	SecretStoreShelfKey = "lunchmoney-client"
+	SecretStoreShelfName = "lunchmoney-client"
 )
 
 type AuthClient struct {
+	Ctx        context.Context
 	httpClient *http.Client
 
 	SecretStore *secretstore.SecretStore
 
-	lunchmoneySecrets *models.Secrets
+	secrets models.Secrets
 }
 
 func NewAuthClient(ctx context.Context) (*AuthClient, error) {
+	newSecretStore, err := secretstore.New(SecretStoreShelfName)
+	if err != nil {
+		return nil, err
+	}
+
 	authClient := &AuthClient{
-		httpClient: &http.Client{Transport: http.DefaultTransport},
+		Ctx:         ctx,
+		httpClient:  &http.Client{Transport: http.DefaultTransport},
+		SecretStore: newSecretStore,
 	}
 
 	return authClient, nil
@@ -46,39 +54,34 @@ func (adt *addAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response,
 	return adt.T.RoundTrip(req)
 }
 
-func (c *AuthClient) InitTransportSession(ctx context.Context) (*http.Client, error) {
-	secretStore, err := secretstore.New(SecretStoreShelfKey)
+func (c *AuthClient) InitTransportSession() (*http.Client, error) {
+	shelfDataBytes, err := c.SecretStore.GetShelfData()
 	if err != nil {
 		return nil, err
 	}
 
-	c.SecretStore = secretStore
-
-	shelfDataBytes, err := secretStore.GetShelfData()
+	err = json.Unmarshal(shelfDataBytes, &c.secrets)
 	if err != nil {
 		return nil, err
 	}
 
-	err = json.Unmarshal(shelfDataBytes, &c.lunchmoneySecrets)
-	if err != nil {
-		return nil, err
-	}
-
-	currentAPIKey := c.lunchmoneySecrets.APIKey
+	currentAPIKey := c.secrets.APIKey
 	if currentAPIKey == "" {
 		log.Error().Msg("api key is not set")
 
 		return nil, err
 	}
 
-	userData, err := c.getUserData(c.lunchmoneySecrets.APIKey)
+	user, err := c.getUserData(c.secrets.APIKey)
 	if err != nil {
+		log.Error().Msg("api key not valid")
+
 		return nil, err
 	}
 
-	log.Info().Msgf("user data fetched for %s", userData.UserName)
+	log.Info().Msgf("user data fetched for %s", user.UserName)
 
-	authTransport, err := c.createAuthTransport(ctx)
+	authTransport, err := c.createAuthTransport()
 
 	return authTransport, err
 }
@@ -93,7 +96,7 @@ func (c *AuthClient) SetSecrets(secrets models.Secrets) error {
 		return err
 	}
 
-	err = c.SecretStore.UpdateShelf(SecretStoreShelfKey, jsonSecrets)
+	err = c.SecretStore.UpdateShelf(SecretStoreShelfName, jsonSecrets)
 	if err != nil {
 		return err
 	}
@@ -104,7 +107,7 @@ func (c *AuthClient) SetSecrets(secrets models.Secrets) error {
 }
 
 func (c *AuthClient) getUserData(apiKey string) (*models.User, error) {
-	path := fmt.Sprintf("%s/%s", constants.Config.APIBaseURL, constants.Path.Me)
+	path := fmt.Sprintf("%s%s", constants.Config.APIBaseURL, constants.Path.Me)
 
 	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
@@ -139,7 +142,7 @@ func (c *AuthClient) getUserData(apiKey string) (*models.User, error) {
 	return &me, nil
 }
 
-func (c *AuthClient) createAuthTransport(ctx context.Context) (*http.Client, error) {
+func (c *AuthClient) createAuthTransport() (*http.Client, error) {
 	shelfDataBytes, err := c.SecretStore.GetShelfData()
 	if err != nil {
 		return nil, err
@@ -154,7 +157,7 @@ func (c *AuthClient) createAuthTransport(ctx context.Context) (*http.Client, err
 	authClient := &http.Client{
 		Transport: &addAuthHeaderTransport{
 			T:      http.DefaultTransport,
-			APIKey: &c.lunchmoneySecrets.APIKey,
+			APIKey: &c.secrets.APIKey,
 		},
 	}
 

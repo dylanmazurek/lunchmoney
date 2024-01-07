@@ -2,51 +2,91 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
+	"github.com/caarlos0/env"
 	"github.com/dylanmazurek/lunchmoney"
+	"github.com/dylanmazurek/lunchmoney/functions"
 	"github.com/dylanmazurek/lunchmoney/models"
+	"github.com/dylanmazurek/lunchmoney/shared"
+	"github.com/dylanmazurek/lunchmoney/util/natsutils"
+	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
-func main() {
+func New() Server {
 	ctx := context.Background()
 
-	client, err := lunchmoney.New(ctx)
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
+
+	cfg := Config{}
+	if err := env.Parse(&cfg); err != nil {
+		log.Error().Err(err).Msg("unable to parse config env")
+	}
+	services := getServices(ctx, &cfg)
+
+	return Server{
+		ctx:      ctx,
+		Config:   &cfg,
+		Services: *services,
+	}
+}
+func main() {
+	server := New()
+
+	config := server.Config
+
+	exit := make(chan os.Signal, 1)
+
+	nc, err := nats.Connect(config.NatsUrl)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Error().Err(err).Msg("failed to create nats client")
 	}
 
-	apiKey, apiKeyOk := os.LookupEnv("API_KEY")
+	ec, _ := natsutils.NewEncodedJsonConn(config.NatsUrl)
+	defer nc.Close()
 
-	if apiKeyOk {
-		newCredentials := &models.Secrets{
-			APIKey: apiKey,
+	assetsTopic := natsutils.TopicParse("lunchmoney", []string{"assets"})
+	natsutils.SubscribeEc(ec, assetsTopic, func(a *shared.Asset) {
+		functions.AssetHandler(server.Services.LunchmoneyClient, a)
+	})
+
+	transactionsTopic := natsutils.TopicParse("lunchmoney", []string{"transactions"})
+	natsutils.SubscribeEc(ec, transactionsTopic, func(t *shared.Transaction) {
+		functions.TransactionHandler(server.Services.LunchmoneyClient, t)
+	})
+
+	log.Info().Msg("ready to recieve jobs")
+
+	signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM)
+	<-exit
+
+	log.Info().Msg("closing server")
+}
+
+func getServices(ctx context.Context, config *Config) *ServiceProviders {
+	lunchmoneyClient, err := lunchmoney.New(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create lunchmoney client")
+	}
+
+	var newCredentials *models.Secrets
+	if config.APIKey != "" {
+		log.Info().Msg("username env var set, setting credentials")
+		newCredentials = &models.Secrets{
+			APIKey: config.APIKey,
 		}
-		client.InitClient(ctx, newCredentials)
 	}
 
-	err = client.InitClient(ctx, nil)
+	err = lunchmoneyClient.InitClient(newCredentials)
 	if err != nil {
-		log.Error().Err(err)
-		return
+		log.Info().Msg("api key required")
 	}
 
-	assets, err := client.ListAsset(ctx)
-	if err != nil {
-		log.Err(err).Msg("failed to list assets")
-		return
+	return &ServiceProviders{
+		LunchmoneyClient: lunchmoneyClient,
 	}
-
-	log.Info().Msgf("listed %d assets", len(*assets))
-
-	transactions, err := client.ListTransaction(ctx)
-	if err != nil {
-		log.Err(err).Msg("failed to list assets")
-		return
-	}
-
-	log.Info().Msgf("listed %d transactions", len(*transactions))
 }

@@ -32,11 +32,11 @@ type pathRegistry struct {
 
 func newPathRegistry() *pathRegistry {
 	pathRegistry := &pathRegistry{
-		"me",
-		"assets",
-		"categories",
-		"transactions",
-		"tags",
+		"/me",
+		"/assets",
+		"/categories",
+		"/transactions",
+		"/tags",
 	}
 
 	return pathRegistry

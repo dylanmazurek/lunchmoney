@@ -1,0 +1,16 @@
+FROM golang:1.21
+
+WORKDIR /app
+
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+COPY . .
+
+RUN go mod download
+
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+
+EXPOSE $DEBUG_PORT
+
+ENTRYPOINT dlv --listen=:$DEBUG_PORT --api-version=2 --headless --accept-multiclient debug ./cli/

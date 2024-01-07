@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,7 +32,7 @@ func (a *AssetResponse) UnmarshalJSON(data []byte) error {
 type Asset struct {
 	Error *string `json:"error,omitempty"`
 
-	AssetID             *int64  `json:"id,omitempty"`
+	AssetID             *int64  `json:"-"`
 	TypeName            *string `json:"type_name,omitempty"`
 	SubtypeName         *string `json:"subtype_name,omitempty"`
 	Name                *string `json:"name,omitempty"`
@@ -48,12 +49,12 @@ func (a *Asset) MarshalJSON() ([]byte, error) {
 	type Alias Asset
 	marshaledJSON, err := json.Marshal(&struct {
 		*Alias
-		BalanceRaw     json.Number `json:"balance"`
-		CurrencyRaw    string      `json:"currency"`
-		BalanceAsOfRaw string      `json:"balance_as_of"`
+		BalanceRaw     string `json:"balance"`
+		CurrencyRaw    string `json:"currency"`
+		BalanceAsOfRaw string `json:"balance_as_of"`
 	}{
 		Alias:          (*Alias)(a),
-		BalanceRaw:     json.Number(fmt.Sprintf("%.2f", a.Balance.AsMajorUnits())),
+		BalanceRaw:     fmt.Sprintf("%.2f", a.Balance.AsMajorUnits()),
 		CurrencyRaw:    strings.ToLower(a.Balance.Currency().Code),
 		BalanceAsOfRaw: a.BalanceAsOf.UTC().Format(time.RFC3339),
 	})
@@ -65,9 +66,9 @@ func (a *Asset) UnmarshalJSON(data []byte) error {
 	type Alias Asset
 	aux := &struct {
 		*Alias
-		BalanceRaw     json.Number `json:"balance"`
-		CurrencyRaw    string      `json:"currency"`
-		BalanceAsOfRaw string      `json:"balance_as_of"`
+		BalanceRaw     string `json:"balance"`
+		CurrencyRaw    string `json:"currency"`
+		BalanceAsOfRaw string `json:"balance_as_of"`
 	}{
 		Alias: (*Alias)(a),
 	}
@@ -76,8 +77,8 @@ func (a *Asset) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	if aux.BalanceRaw.String() != "" {
-		balanceFloat, err := aux.BalanceRaw.Float64()
+	if aux.BalanceRaw != "" {
+		balanceFloat, err := strconv.ParseFloat(aux.BalanceRaw, 64)
 		if err != nil {
 			return err
 		}

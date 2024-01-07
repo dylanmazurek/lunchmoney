@@ -2,7 +2,6 @@ package lunchmoney
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,13 +13,13 @@ import (
 	"github.com/dylanmazurek/lunchmoney/util/constants"
 )
 
-func (c *Client) FetchAsset(ctx context.Context, assetId int64) (*models.Asset, error) {
-	assets, err := c.ListAsset(ctx)
+func (c *Client) FetchAsset(assetId int64) (*models.Asset, error) {
+	assets, err := c.ListAsset()
 	if err != nil {
 		return nil, err
 	}
 
-	assetIdx := slices.IndexFunc(*assets, func(asset models.Asset) bool { return *asset.AssetID == assetId })
+	assetIdx := slices.IndexFunc(*assets, func(asset models.Asset) bool { return asset.AssetID == &assetId })
 	if assetIdx == -1 {
 		return nil, nil
 	}
@@ -30,43 +29,39 @@ func (c *Client) FetchAsset(ctx context.Context, assetId int64) (*models.Asset, 
 	return &asset, err
 }
 
-func (c *Client) ListAsset(ctx context.Context) (*[]models.Asset, error) {
+func (c *Client) ListAsset() (*[]models.Asset, error) {
 	urlString := fmt.Sprintf("%s/%s", constants.Config.APIBaseURL, constants.Path.Assets)
 	requestUrl, err := url.Parse(urlString)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodGet, requestUrl.String(), nil)
+	req, err := c.NewRequest(http.MethodGet, requestUrl.String(), nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var assets models.AssetResponse
-	err = c.Do(ctx, req, &assets, nil)
+	err = c.Do(req, &assets)
 
 	return &assets.Assets, err
 }
 
-func (c *Client) UpdateAsset(ctx context.Context, id int64, asset models.Asset) (*models.Asset, error) {
-	assetJson, err := json.Marshal(&asset)
+func (c *Client) UpdateAsset(id int64, asset *models.Asset) (*models.Asset, error) {
+	assetJson, err := json.Marshal(asset)
 	if err != nil {
 		return nil, err
 	}
 
-	urlString := fmt.Sprintf("%s/%s/%d", constants.Config.APIBaseURL, constants.Path.Assets, id)
-	requestUrl, err := url.Parse(urlString)
-	if err != nil {
-		return nil, err
-	}
+	requestPath := fmt.Sprintf("%s/%d", constants.Path.Assets, id)
 
-	req, err := http.NewRequest(http.MethodPut, requestUrl.String(), bytes.NewReader(assetJson))
+	req, err := c.NewRequest(http.MethodPut, requestPath, bytes.NewReader(assetJson), nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var updatedAsset models.Asset
-	err = c.Do(ctx, req, &updatedAsset, nil)
+	err = c.Do(req, updatedAsset)
 
 	if err != nil {
 		return nil, err

@@ -2,7 +2,8 @@ package models
 
 import (
 	"encoding/json"
-	"math"
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Rhymond/go-money"
@@ -43,31 +44,41 @@ func (a *TransactionResponse) UnmarshalJSON(data []byte) error {
 }
 
 type Transaction struct {
-	ID           *json.Number   `json:"id,omitempty"`
-	Date         time.Date      `json:"date"`
-	OriginalDate *time.Date     `json:"original_date,omitempty"`
-	Payee        *string        `json:"payee"`
-	Amount       money.Money    `json:"-"`
-	Currency     money.Currency `json:"-"`
-	Notes        *string        `json:"notes,omitempty"`
-	CategoryID   *json.Number   `json:"category_id,omitempty"`
-	RecurringID  *json.Number   `json:"recurring_id,omitempty"`
-	AssetID      json.Number    `json:"asset_id"`
-	Status       *string        `json:"status,omitempty"`
-	IsGroup      bool           `json:"is_group,omitempty"`
-	GroupID      *json.Number   `json:"group_id,omitempty"`
-	ParentID     *json.Number   `json:"parent_id,omitempty"`
-	OriginalName *string        `json:"original_name,omitempty"`
-	ExternalID   *string        `json:"external_id,omitempty"`
-	Type         *string        `json:"type,omitempty"`
+	ID      *json.Number `json:"id,omitempty"`
+	AssetID json.Number  `json:"asset_id"`
+
+	Payee        string       `json:"payee"`
+	Notes        *string      `json:"notes,omitempty"`
+	CategoryID   *json.Number `json:"category_id,omitempty"`
+	RecurringID  *json.Number `json:"recurring_id,omitempty"`
+	Status       string       `json:"status"`
+	IsGroup      bool         `json:"is_group,omitempty"`
+	GroupID      *json.Number `json:"group_id,omitempty"`
+	ParentID     *json.Number `json:"parent_id,omitempty"`
+	OriginalName *string      `json:"original_name,omitempty"`
+	ExternalID   *string      `json:"external_id,omitempty"`
+	Type         *string      `json:"type,omitempty"`
+
+	Amount       money.Money `json:"-"`
+	Date         time.Date   `json:"-"`
+	OriginalDate *time.Date  `json:"-"`
 }
 
 func (t *Transaction) MarshalJSON() ([]byte, error) {
 	type Alias Transaction
 	marshaledJSON, err := json.Marshal(&struct {
 		*Alias
+		AmountRaw   string `json:"amount"`
+		CurrencyRaw string `json:"currency"`
+
+		DateRaw         string  `json:"date"`
+		OriginalDateRaw *string `json:"original_date,omitempty"`
 	}{
-		Alias: (*Alias)(t),
+		Alias:       (*Alias)(t),
+		AmountRaw:   fmt.Sprintf("%.2f", t.Amount.AsMajorUnits()),
+		CurrencyRaw: strings.ToLower(t.Amount.Currency().Code),
+
+		DateRaw: t.Date.String(),
 	})
 
 	return marshaledJSON, err
@@ -77,10 +88,11 @@ func (t *Transaction) UnmarshalJSON(data []byte) error {
 	type Alias Transaction
 	aux := &struct {
 		*Alias
+		AmountRaw   string `json:"amount"`
+		CurrencyRaw string `json:"currency"`
 
-		AmountRaw   json.Number `json:"amount"`
-		ToBaseRaw   json.Number `json:"to_base"`
-		CurrencyRaw string      `json:"currency"`
+		DateRaw         string  `json:"date"`
+		OriginalDateRaw *string `json:"original_date,omitempty"`
 	}{
 		Alias: (*Alias)(t),
 	}
@@ -89,13 +101,20 @@ func (t *Transaction) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	currency := money.GetCurrency(strings.ToUpper(aux.CurrencyRaw))
-	t.Currency = *currency
+	if aux.AmountRaw != "" {
+		amountFloat, err := strconv.ParseFloat(aux.AmountRaw, 64)
+		if err != nil {
+			return err
+		}
 
-	amountFloat, _ := aux.AmountRaw.Float64()
-	amountInCents := int64(math.Round(amountFloat))
-	amount := money.New(amountInCents, t.Currency.Code)
-	t.Amount = *amount
+		currency := strings.ToUpper(aux.CurrencyRaw)
+		amount := money.NewFromFloat(amountFloat, currency)
+		t.Amount = *amount
+	}
+
+	if aux.DateRaw != "" {
+		t.Date = time.Parse(aux.DateRaw)
+	}
 
 	return nil
 }
@@ -110,7 +129,7 @@ type InsertRequest struct {
 }
 
 type InsertResponse struct {
-	Error *string `json:"error,omitempty"`
+	Errors []string `json:"error,omitempty"`
 
 	Ids []int64 `json:"ids,omitempty"`
 }

@@ -7,11 +7,15 @@ import (
 )
 
 type DateTime struct {
-	time.Time
+	Time time.Time
 }
 
 type Date struct {
-	time.Time
+	Date time.Time
+}
+
+func (t *Date) String() string {
+	return t.Date.Format(time.DateOnly)
 }
 
 func (t *Date) MarshalJSON() ([]byte, error) {
@@ -36,7 +40,12 @@ func (t *Date) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	t.Time, err = time.Parse(time.DateOnly, s)
+	t.Date, err = time.Parse(time.DateOnly, s)
 
 	return err
+}
+
+func Parse(date string) Date {
+	t, _ := time.Parse(time.DateOnly, date)
+	return Date{Date: t}
 }
