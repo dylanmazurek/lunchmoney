@@ -2,92 +2,91 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
+	"github.com/caarlos0/env"
 	"github.com/dylanmazurek/lunchmoney"
+	"github.com/dylanmazurek/lunchmoney/functions"
 	"github.com/dylanmazurek/lunchmoney/models"
-	"github.com/markkurossi/tabulate"
+	"github.com/dylanmazurek/lunchmoney/shared"
+	"github.com/dylanmazurek/lunchmoney/util/natsutils"
+	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
-func main() {
+func New() Server {
 	ctx := context.Background()
 
-	client, err := lunchmoney.New(ctx)
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
+
+	cfg := Config{}
+	if err := env.Parse(&cfg); err != nil {
+		log.Error().Err(err).Msg("unable to parse config env")
+	}
+	services := getServices(ctx, &cfg)
+
+	return Server{
+		ctx:      ctx,
+		Config:   &cfg,
+		Services: *services,
+	}
+}
+func main() {
+	server := New()
+
+	config := server.Config
+
+	exit := make(chan os.Signal, 1)
+
+	nc, err := nats.Connect(config.NatsUrl)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Error().Err(err).Msg("failed to create nats client")
 	}
 
-	err = client.InitClient(ctx)
-	if err != nil {
-		log.Error().Err(err)
-		return
-	}
+	ec, _ := natsutils.NewEncodedJsonConn(config.NatsUrl)
+	defer nc.Close()
 
-	assetList, err := client.ListAsset(ctx)
-	if err != nil {
-		log.Err(err).Msg("failed to list assets")
-		return
-	}
+	assetsTopic := natsutils.TopicParse("lunchmoney", []string{"assets"})
+	natsutils.SubscribeEc(ec, assetsTopic, func(a *shared.Asset) {
+		functions.AssetHandler(server.Services.LunchmoneyClient, a)
+	})
 
-	printAssets(assetList.Assets)
+	transactionsTopic := natsutils.TopicParse("lunchmoney", []string{"transactions"})
+	natsutils.SubscribeEc(ec, transactionsTopic, func(t *shared.Transaction) {
+		functions.TransactionHandler(server.Services.LunchmoneyClient, t)
+	})
 
-	transactionList, err := client.ListTransaction(ctx)
-	if err != nil {
-		log.Err(err).Msg("failed to list assets")
-		return
-	}
+	log.Info().Msg("ready to recieve jobs")
 
-	printTransactions(transactionList.Transactions)
+	signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM)
+	<-exit
+
+	log.Info().Msg("closing server")
 }
 
-func printAssets(assets []models.Asset) {
-	tab := tabulate.New(tabulate.Unicode)
-
-	tab.Header("ID")
-	tab.Header("TYPE")
-	tab.Header("NAME")
-
-	tab.Header("BALANCE")
-	tab.Header("LAST UPDATED")
-	tab.Header("INSTITUTION")
-
-	for _, asset := range assets {
-		row := tab.Row()
-
-		row.Column(fmt.Sprintf("%d", *asset.AssetID))
-		row.Column(*asset.TypeName)
-		row.Column(*asset.Name)
-		row.Column(asset.Balance.Display())
-		row.Column(asset.BalanceAsOf.Format("2006-01-02"))
-		row.Column(asset.InstitutionName)
+func getServices(ctx context.Context, config *Config) *ServiceProviders {
+	lunchmoneyClient, err := lunchmoney.New(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create lunchmoney client")
 	}
 
-	tab.Print(os.Stdout)
-}
-
-func printTransactions(transactions []models.Transaction) {
-	tab := tabulate.New(tabulate.Unicode)
-
-	tab.Header("ID")
-	tab.Header("DATE")
-	tab.Header("AMOUNT")
-	tab.Header("PAYEE")
-	tab.Header("ASSET")
-
-	for _, transaction := range transactions {
-		row := tab.Row()
-
-		row.Column(fmt.Sprintf("%d", transaction.ID))
-		row.Column(transaction.Date.Format("2006-01-02"))
-		row.Column(transaction.Amount.Display())
-		row.Column(*transaction.Payee)
-
-		val, _ := transaction.AssetID.Float64()
-		row.Column(fmt.Sprintf("%.2f", val))
+	var newCredentials *models.Secrets
+	if config.APIKey != "" {
+		log.Info().Msg("username env var set, setting credentials")
+		newCredentials = &models.Secrets{
+			APIKey: config.APIKey,
+		}
 	}
 
-	tab.Print(os.Stdout)
+	err = lunchmoneyClient.InitClient(newCredentials)
+	if err != nil {
+		log.Info().Msg("api key required")
+	}
+
+	return &ServiceProviders{
+		LunchmoneyClient: lunchmoneyClient,
+	}
 }

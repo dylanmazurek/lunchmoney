@@ -2,6 +2,10 @@ package models
 
 import "time"
 
+type CategoryResponse struct {
+	Categories []Category `json:"categories"`
+}
+
 // Category is a single LM category.
 type Category struct {
 	ID                int64       `json:"id"`

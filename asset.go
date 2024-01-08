@@ -2,75 +2,74 @@ package lunchmoney
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 
 	"github.com/dylanmazurek/lunchmoney/models"
+	"github.com/dylanmazurek/lunchmoney/util/constants"
 )
 
-func (c *Client) FetchAsset(ctx context.Context, assetId int64) (*models.Asset, error) {
-	assets, err := c.ListAsset(ctx)
+func (c *Client) FetchAsset(assetId int64) (*models.Asset, error) {
+	assets, err := c.ListAsset()
 	if err != nil {
 		return nil, err
 	}
 
-	assetIdx := slices.IndexFunc(assets.Assets, func(asset models.Asset) bool { return *asset.AssetID == assetId })
+	assetIdx := slices.IndexFunc(*assets, func(asset models.Asset) bool { return asset.AssetID == &assetId })
 	if assetIdx == -1 {
 		return nil, nil
 	}
 
-	asset := (assets.Assets)[assetIdx]
+	asset := (*assets)[assetIdx]
 
 	return &asset, err
 }
 
-func (c *Client) ListAsset(ctx context.Context) (*models.AssetList, error) {
-	req, err := c.NewRequest(ctx, http.MethodGet, "assets", nil, nil)
+func (c *Client) ListAsset() (*[]models.Asset, error) {
+	urlString := fmt.Sprintf("%s/%s", constants.Config.APIBaseURL, constants.Path.Assets)
+	requestUrl, err := url.Parse(urlString)
 	if err != nil {
 		return nil, err
 	}
 
-	var assets models.AssetList
-	err = c.Do(ctx, req, &assets)
+	req, err := c.NewRequest(http.MethodGet, requestUrl.String(), nil, nil)
+	if err != nil {
+		return nil, err
+	}
 
-	return &assets, err
+	var assets models.AssetResponse
+	err = c.Do(req, &assets)
+
+	return &assets.Assets, err
 }
 
-func (c *Client) UpdateAsset(ctx context.Context, id int64, asset models.Asset) (*models.Asset, error) {
-	b, err := json.Marshal(&asset)
+func (c *Client) UpdateAsset(id int64, asset *models.Asset) (*models.Asset, error) {
+	assetJson, err := json.Marshal(asset)
 	if err != nil {
 		return nil, err
 	}
 
-	path := fmt.Sprintf("assets/%d", id)
-	req, err := c.NewRequest(ctx, http.MethodPut, path, bytes.NewReader(b), nil)
+	requestPath := fmt.Sprintf("%s/%d", constants.Path.Assets, id)
+
+	req, err := c.NewRequest(http.MethodPut, requestPath, bytes.NewReader(assetJson), nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var updatedAsset models.Asset
-	err = c.Do(ctx, req, &updatedAsset)
+	err = c.Do(req, updatedAsset)
+
+	if err != nil {
+		return nil, err
+	}
 
 	if updatedAsset.Error != nil {
-		err = fmt.Errorf("%s", *updatedAsset.Error)
+		return nil, errors.New(*updatedAsset.Error)
 	}
 
 	return &updatedAsset, err
-}
-
-func (c *Client) UpdateAssetFromJSON(ctx context.Context, assetJson []byte) (*models.Asset, error) {
-	asset := &models.Asset{}
-	err := json.Unmarshal(assetJson, &asset)
-
-	if asset.AssetID == nil {
-		return nil, errors.New("no asset id set")
-	}
-
-	updatedAsset, err := c.UpdateAsset(ctx, *asset.AssetID, *asset)
-
-	return updatedAsset, err
 }

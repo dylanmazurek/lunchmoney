@@ -1,7 +1,0 @@
-version: '3'
-
-tasks:
-  default:
-    cmds:
-      - echo "building lunchmoney package"
-      - go build
