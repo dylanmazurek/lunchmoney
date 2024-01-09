@@ -36,10 +36,16 @@ func TransactionHandler(lma *lunchmoney.Client, transaction *shared.Transaction)
 
 	insertedTransactions, err := lma.InsertTransactions([]models.Transaction{lmTransaction}, true)
 	if err != nil {
-		log.Error().Err(err).Msg("unable to insert transaction")
+		log.Error().Err(err).
+			Str("externalId", *lmTransaction.ExternalID).
+			Int64("assetId", transaction.AssetID).
+			Msg("unable to insert transaction")
 	}
 
 	if insertedTransactions != nil {
-		log.Info().Msgf("inserted %d transactions", len(*insertedTransactions))
+		log.Info().
+			Str("externalId", *lmTransaction.ExternalID).
+			Int64("assetId", transaction.AssetID).
+			Msgf("inserted %d transactions", len(*insertedTransactions))
 	}
 }

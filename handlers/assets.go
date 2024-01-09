@@ -22,11 +22,16 @@ func AssetHandler(lma *lunchmoney.Client, asset *shared.Asset) {
 		Balance:     *balance,
 		BalanceAsOf: asset.BalanceAsOf,
 	}
-
-	log.Debug().Msg("updated asset")
+	log.Info().
+		Str("externalId", asset.ExternalAssetID).
+		Int64("assetId", asset.AssetID).
+		Msg("updated asset")
 
 	updatedAsset, err := lma.UpdateAsset(asset.AssetID, lmAsset)
 	if err != nil || updatedAsset.Error != nil {
-		log.Error().Err(err).Msg("unable to update asset")
+		log.Error().
+			Str("externalId", asset.ExternalAssetID).
+			Int64("assetId", asset.AssetID).
+			Err(err).Msg("unable to update asset")
 	}
 }
