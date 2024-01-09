@@ -40,7 +40,7 @@ func (c *Client) InitClient(newCredentials *models.Secrets) error {
 		return err
 	}
 
-	if newCredentials.APIKey != "" {
+	if newCredentials != nil && newCredentials.APIKey != "" {
 		err := newAuthClient.SetSecrets(*newCredentials)
 		if err != nil {
 			return err

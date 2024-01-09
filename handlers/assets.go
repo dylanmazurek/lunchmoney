@@ -1,7 +1,8 @@
-package functions
+package handlers
 
 import (
 	"math"
+	"strings"
 
 	"github.com/Rhymond/go-money"
 	"github.com/dylanmazurek/lunchmoney"
@@ -12,7 +13,9 @@ import (
 
 func AssetHandler(lma *lunchmoney.Client, asset *shared.Asset) {
 	balanceFloat, _ := asset.Balance.Float64()
-	balance := money.NewFromFloat(math.Abs(balanceFloat), *asset.Currency)
+	currency := strings.ToUpper(asset.Currency)
+
+	balance := money.NewFromFloat(math.Abs(balanceFloat), currency)
 
 	lmAsset := &models.Asset{
 		AssetID:     &asset.AssetID,

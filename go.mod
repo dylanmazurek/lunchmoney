@@ -28,6 +28,7 @@ require (
 )
 
 require (
+	github.com/caarlos0/env/v10 v10.0.0
 	github.com/rs/zerolog v1.31.0
 	golang.org/x/sys v0.15.0 // indirect
 )
