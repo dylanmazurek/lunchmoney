@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/dylanmazurek/lunchmoney"
-	"github.com/nats-io/nats.go"
+	"github.com/redis/go-redis/v9"
 )
 
 type Server struct {
@@ -16,7 +16,7 @@ type Server struct {
 }
 
 type Config struct {
-	NatsUrl string `env:"NATS_URL"`
+	RedisUrl string `env:"REDIS_URL"`
 
 	APIKey string `env:"API_KEY"`
 }
@@ -24,5 +24,5 @@ type Config struct {
 type ServiceProviders struct {
 	LunchmoneyClient *lunchmoney.Client
 
-	NatsClient *nats.EncodedConn
+	RedisClient *redis.Client
 }
