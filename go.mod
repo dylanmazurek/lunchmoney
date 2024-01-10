@@ -23,12 +23,13 @@ require (
 	github.com/nats-io/nkeys v0.4.5 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/redis/go-redis/v9 v9.4.0 // indirect
-	golang.org/x/crypto v0.6.0 // indirect
+	golang.org/x/crypto v0.17.0 // indirect
 	golang.org/x/term v0.15.0 // indirect
 )
 
 require (
 	github.com/caarlos0/env/v10 v10.0.0
+	github.com/dylanmazurek/finance-sync v0.0.0-20240110074412-42de06eddbf9
 	github.com/rs/zerolog v1.31.0
 	golang.org/x/sys v0.15.0 // indirect
 )
