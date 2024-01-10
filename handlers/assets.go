@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/Rhymond/go-money"
-	shared "github.com/dylanmazurek/finance-sync/models"
 	"github.com/dylanmazurek/lunchmoney"
 	"github.com/dylanmazurek/lunchmoney/models"
+	"github.com/dylanmazurek/lunchmoney/shared"
 	"github.com/rs/zerolog/log"
 )
 
@@ -18,20 +18,21 @@ func AssetHandler(lma *lunchmoney.Client, asset *shared.Asset) {
 	balance := money.NewFromFloat(math.Abs(balanceFloat), currency)
 
 	lmAsset := &models.Asset{
-		AssetID:     &asset.AssetID,
+		AssetID:     asset.AssetID,
 		Balance:     *balance,
 		BalanceAsOf: asset.BalanceAsOf,
 	}
+
 	log.Info().
 		Str("externalId", asset.ExternalAssetID).
-		Int64("assetId", asset.AssetID).
+		Int64("assetId", *asset.AssetID).
 		Msg("updated asset")
 
-	updatedAsset, err := lma.UpdateAsset(asset.AssetID, lmAsset)
+	updatedAsset, err := lma.UpdateAsset(*asset.AssetID, lmAsset)
 	if err != nil || updatedAsset.Error != nil {
 		log.Error().
 			Str("externalId", asset.ExternalAssetID).
-			Int64("assetId", asset.AssetID).
+			Int64("assetId", *asset.AssetID).
 			Err(err).Msg("unable to update asset")
 	}
 }

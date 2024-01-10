@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	shared "github.com/dylanmazurek/finance-sync/models"
 	"github.com/dylanmazurek/lunchmoney/handlers"
+	"github.com/dylanmazurek/lunchmoney/shared"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )

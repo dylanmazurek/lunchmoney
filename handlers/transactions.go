@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/Rhymond/go-money"
-	shared "github.com/dylanmazurek/finance-sync/models"
 	"github.com/dylanmazurek/lunchmoney"
 	"github.com/dylanmazurek/lunchmoney/models"
+	"github.com/dylanmazurek/lunchmoney/shared"
 	"github.com/dylanmazurek/lunchmoney/util/time"
 	"github.com/rs/zerolog/log"
 )
