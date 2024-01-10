@@ -2,62 +2,55 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/caarlos0/env"
-	"github.com/dylanmazurek/lunchmoney"
-	"github.com/dylanmazurek/lunchmoney/functions"
-	"github.com/dylanmazurek/lunchmoney/models"
-	"github.com/dylanmazurek/lunchmoney/shared"
-	"github.com/dylanmazurek/lunchmoney/util/natsutils"
-	"github.com/nats-io/nats.go"
+	shared "github.com/dylanmazurek/finance-sync/models"
+	"github.com/dylanmazurek/lunchmoney/handlers"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
-func New() Server {
+func main() {
 	ctx := context.Background()
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
 
-	cfg := Config{}
-	if err := env.Parse(&cfg); err != nil {
-		log.Error().Err(err).Msg("unable to parse config env")
-	}
-	services := getServices(ctx, &cfg)
-
-	return Server{
-		ctx:      ctx,
-		Config:   &cfg,
-		Services: *services,
-	}
-}
-func main() {
-	server := New()
-
-	config := server.Config
-
 	exit := make(chan os.Signal, 1)
 
-	nc, err := nats.Connect(config.NatsUrl)
-	if err != nil {
-		log.Error().Err(err).Msg("failed to create nats client")
-	}
+	providers := handlers.New(ctx)
 
-	ec, _ := natsutils.NewEncodedJsonConn(config.NatsUrl)
-	defer nc.Close()
+	go func() {
+		ctx := context.Background()
 
-	assetsTopic := natsutils.TopicParse("lunchmoney", []string{"assets"})
-	natsutils.SubscribeEc(ec, assetsTopic, func(a *shared.Asset) {
-		functions.AssetHandler(server.Services.LunchmoneyClient, a)
-	})
+		assetsSub := providers.RedisClient.Subscribe(ctx, "lunchmoney.assets")
+		assetsCh := assetsSub.Channel()
+		for msg := range assetsCh {
+			var a shared.Asset
+			if err := json.Unmarshal([]byte(msg.Payload), &a); err != nil {
+				log.Error().Err(err).Msgf("unable to process message from channel: %s", msg.Channel)
+			}
 
-	transactionsTopic := natsutils.TopicParse("lunchmoney", []string{"transactions"})
-	natsutils.SubscribeEc(ec, transactionsTopic, func(t *shared.Transaction) {
-		functions.TransactionHandler(server.Services.LunchmoneyClient, t)
-	})
+			handlers.AssetHandler(providers.LunchmoneyClient, &a)
+		}
+	}()
+
+	go func() {
+		ctx := context.Background()
+
+		transactionsSub := providers.RedisClient.Subscribe(ctx, "lunchmoney.transactions")
+		transactionsCh := transactionsSub.Channel()
+		for msg := range transactionsCh {
+			var t shared.Transaction
+			if err := json.Unmarshal([]byte(msg.Payload), &t); err != nil {
+				log.Error().Err(err).Msgf("unable to process message from channel: %s", msg.Channel)
+			}
+
+			handlers.TransactionHandler(providers.LunchmoneyClient, &t)
+		}
+	}()
 
 	log.Info().Msg("ready to recieve jobs")
 
@@ -65,28 +58,4 @@ func main() {
 	<-exit
 
 	log.Info().Msg("closing server")
-}
-
-func getServices(ctx context.Context, config *Config) *ServiceProviders {
-	lunchmoneyClient, err := lunchmoney.New(ctx)
-	if err != nil {
-		log.Error().Err(err).Msg("failed to create lunchmoney client")
-	}
-
-	var newCredentials *models.Secrets
-	if config.APIKey != "" {
-		log.Info().Msg("username env var set, setting credentials")
-		newCredentials = &models.Secrets{
-			APIKey: config.APIKey,
-		}
-	}
-
-	err = lunchmoneyClient.InitClient(newCredentials)
-	if err != nil {
-		log.Info().Msg("api key required")
-	}
-
-	return &ServiceProviders{
-		LunchmoneyClient: lunchmoneyClient,
-	}
 }
