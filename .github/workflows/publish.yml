@@ -21,6 +21,6 @@ jobs:
             username: ${{ github.actor }}
             password: ${{ secrets.GITHUB_TOKEN }}
         - name: Build the ${{ env.SERVER_NAME }}-server image
-          run: echo "docker build . --tag ghcr.io/dylanmazurek/$SERVER_NAME-server:latest"
+          run: docker build . --tag ghcr.io/dylanmazurek/$SERVER_NAME-server:latest
         - name: Push the ${{ env.SERVER_NAME }}-server image
-          run: echo "docker push ghcr.io/dylanmazurek/$SERVER_NAME-server:latest"
+          run: docker push ghcr.io/dylanmazurek/$SERVER_NAME-server:latest
