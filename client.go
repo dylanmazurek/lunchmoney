@@ -11,6 +11,7 @@ import (
 
 	"github.com/dylanmazurek/lunchmoney/models"
 	"github.com/dylanmazurek/lunchmoney/util/constants"
+	"github.com/dylanmazurek/lunchmoney/util/secretstore"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -18,8 +19,8 @@ import (
 type Client struct {
 	ctx context.Context
 
-	HTTPClient *http.Client
-	State      string
+	Client *http.Client
+	State  string
 
 	UserID *string
 }
@@ -33,18 +34,21 @@ func New(ctx context.Context) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) InitClient(newCredentials *models.Secrets) error {
-	newAuthClient, err := NewAuthClient(c.ctx)
+func (c *Client) InitClient(ssc *secretstore.Client) error {
+	newAuthClient, err := NewAuthClient(c.ctx, ssc)
 	if err != nil {
 		c.State = constants.ClientState.Error
 		return err
 	}
 
-	if newCredentials != nil && newCredentials.APIKey != "" {
-		err := newAuthClient.SetSecrets(*newCredentials)
-		if err != nil {
-			return err
-		}
+	var secrets models.Secrets
+	secretsMap, err := ssc.LoadSecrets(secrets)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to get secrets")
+	}
+
+	newAuthClient.secrets = models.Secrets{
+		APIKey: secretsMap["api_key"].(string),
 	}
 
 	authTransport, err := newAuthClient.InitTransportSession()
@@ -52,7 +56,7 @@ func (c *Client) InitClient(newCredentials *models.Secrets) error {
 		return err
 	}
 
-	c.HTTPClient = authTransport
+	c.Client = authTransport
 	c.UserID = &newAuthClient.secrets.UserID
 
 	return nil
@@ -86,7 +90,7 @@ func (c *Client) NewRequest(method string, path string, body io.Reader, params *
 }
 
 func (c *Client) Do(req *models.Request, resp interface{}) error {
-	httpResponse, err := c.HTTPClient.Do(req.HTTPRequest)
+	httpResponse, err := c.Client.Do(req.HTTPRequest)
 	if err != nil {
 		if httpResponse != nil {
 			log.Debug().Msgf("http response error: %s", httpResponse.Status)
