@@ -20,7 +20,23 @@ var TransactionStatus = map[string]string{
 }
 
 func TransactionHandler(lma *lunchmoney.Client, transaction *shared.Transaction) {
-	amount := money.NewFromFloat(transaction.Amount, transaction.Currency)
+	amountFloat, err := transaction.Amount.Float64()
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("ext-asset-id", transaction.ExternalAssetID).
+			Str("ext-transaction-id", transaction.ExternalTransactionID).
+			Msg("unable to upsert asset")
+	}
+
+	if transaction.AssetID == nil {
+		log.Error().
+			Str("ext-asset-id", transaction.ExternalAssetID).
+			Str("ext-transaction-id", transaction.ExternalTransactionID).
+			Msg("unable to upsert transaction, asset id not set")
+	}
+
+	amount := money.NewFromFloat(amountFloat, transaction.Currency)
 
 	assetId := json.Number(fmt.Sprintf("%d", transaction.AssetID))
 	status := TransactionStatus[transaction.Status]
@@ -36,16 +52,17 @@ func TransactionHandler(lma *lunchmoney.Client, transaction *shared.Transaction)
 
 	insertedTransactions, err := lma.InsertTransactions([]models.Transaction{lmTransaction}, true)
 	if err != nil {
-		log.Error().Err(err).
-			Str("externalId", *lmTransaction.ExternalID).
-			Int64("assetId", transaction.AssetID).
-			Msg("unable to insert transaction")
+		log.Error().
+			Err(err).
+			Str("ext-asset-id", transaction.ExternalAssetID).
+			Str("ext-transaction-id", transaction.ExternalTransactionID).
+			Msg("unable to upsert transaction")
 	}
 
 	if insertedTransactions != nil {
 		log.Info().
-			Str("externalId", *lmTransaction.ExternalID).
-			Int64("assetId", transaction.AssetID).
-			Msgf("inserted %d transactions", len(*insertedTransactions))
+			Str("ext-asset-id", transaction.ExternalAssetID).
+			Str("ext-transaction-id", transaction.ExternalTransactionID).
+			Msg("upserted transaction")
 	}
 }
