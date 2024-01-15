@@ -24,8 +24,7 @@ func AssetHandler(lma *lunchmoney.Client, asset *shared.Asset) {
 	}
 
 	log.Info().
-		Str("externalId", asset.ExternalAssetID).
-		Int64("assetId", *asset.AssetID).
+		Str("external-id", asset.ExternalAssetID).
 		Msg("updated asset")
 
 	updatedAsset, err := lma.UpdateAsset(*asset.AssetID, lmAsset)

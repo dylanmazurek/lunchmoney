@@ -7,29 +7,27 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 
 	"github.com/dylanmazurek/lunchmoney/models"
 	"github.com/dylanmazurek/lunchmoney/util/constants"
 	"github.com/dylanmazurek/lunchmoney/util/secretstore"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 type Client struct {
-	ctx context.Context
-
+	ctx    context.Context
 	Client *http.Client
-	State  string
+
+	State string
 
 	UserID *string
 }
 
 func New(ctx context.Context) (*Client, error) {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Caller().Logger()
-
 	return &Client{
-		ctx:   ctx,
+		ctx:    ctx,
+		Client: nil,
+
 		State: constants.ClientState.New,
 	}, nil
 }
