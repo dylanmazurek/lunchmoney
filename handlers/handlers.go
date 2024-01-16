@@ -5,9 +5,13 @@ import (
 
 	"github.com/caarlos0/env/v10"
 	"github.com/dylanmazurek/lunchmoney"
-	"github.com/dylanmazurek/lunchmoney/models"
+	"github.com/dylanmazurek/lunchmoney/util/secretstore"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
+)
+
+var (
+	SOURCE_NAME = "lunchmoney"
 )
 
 type ServiceProvider struct {
@@ -20,13 +24,17 @@ type ServiceProvider struct {
 type Config struct {
 	RedisUrl string `env:"REDIS_URL"`
 
-	APIKey *string `env:"API_KEY"`
+	SecretsUrl string `env:"SECRETS_URL"`
+	AccessKey  string `env:"ACCESS_KEY"`
 }
 
 func New(ctx context.Context) *ServiceProvider {
-	config := &Config{}
-	if err := env.Parse(config); err != nil {
-		log.Error().Err(err).Msg("unable to parse config env")
+	log.Info().Msg("loading providers")
+
+	config := Config{}
+	if err := env.Parse(&config); err != nil {
+		log.Panic().Err(err).Msg("unable to parse config env")
+		panic(err)
 	}
 
 	sp := initServiceProvider(ctx, config)
@@ -34,21 +42,29 @@ func New(ctx context.Context) *ServiceProvider {
 	return &sp
 }
 
-func newLunchmoneyClient(ctx context.Context, config Config) lunchmoney.Client {
+func newSecretStore(config Config) *secretstore.Client {
+	secretStoreClient, err := secretstore.New(config.SecretsUrl, SOURCE_NAME, config.AccessKey)
+	if err != nil {
+		log.Panic().Err(err).Msg("failed to load secrets")
+		panic(err)
+	}
+
+	err = secretStoreClient.PingServer()
+	if err != nil {
+		log.Panic().Err(err).Msg("failed ping secrets server")
+		panic(err)
+	}
+
+	return secretStoreClient
+}
+
+func newLunchmoneyClient(ctx context.Context, secretStore *secretstore.Client) lunchmoney.Client {
 	lunchmoneyClient, err := lunchmoney.New(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create wych client")
 	}
 
-	var newSecrets *models.Secrets
-	if config.APIKey != nil {
-		log.Info().Msg("username env var set, setting credentials")
-		newSecrets = &models.Secrets{
-			APIKey: *config.APIKey,
-		}
-	}
-
-	err = lunchmoneyClient.InitClient(newSecrets)
+	err = lunchmoneyClient.InitClient(secretStore)
 	if err != nil {
 		log.Error().Err(err).Msg("unable to init client, credentials required")
 	}
@@ -69,10 +85,11 @@ func newRedisClient(config Config) redis.Client {
 	return *redisClient
 }
 
-func initServiceProvider(ctx context.Context, config *Config) ServiceProvider {
-	lunchmoneyClient := newLunchmoneyClient(ctx, *config)
+func initServiceProvider(ctx context.Context, config Config) ServiceProvider {
+	secretStore := newSecretStore(config)
+	redisClient := newRedisClient(config)
 
-	redisClient := newRedisClient(*config)
+	lunchmoneyClient := newLunchmoneyClient(ctx, secretStore)
 
 	return ServiceProvider{
 		RedisClient:      &redisClient,

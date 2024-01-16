@@ -1,9 +1,9 @@
 package models
 
 type Secrets struct {
-	APIKey string `json:"apiKey"`
+	APIKey string `secret:"api_key"`
 
-	UserID string `json:"userId"`
+	UserID string `secret:"user_id,omitempty"`
 }
 
 func (s *Secrets) HasSecrets() bool {
