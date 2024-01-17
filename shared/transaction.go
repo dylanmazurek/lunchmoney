@@ -14,5 +14,5 @@ type Transaction struct {
 	Amount                json.Number `json:"amount"`
 	Currency              string      `json:"currency"`
 
-	AssetID *int64 `json:"assetId"`
+	AssetID *json.Number `json:"assetId"`
 }

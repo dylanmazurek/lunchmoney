@@ -1,9 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
-	"fmt"
-
 	"github.com/Rhymond/go-money"
 	"github.com/dylanmazurek/lunchmoney"
 	"github.com/dylanmazurek/lunchmoney/models"
@@ -38,7 +35,6 @@ func TransactionHandler(lma *lunchmoney.Client, transaction *shared.Transaction)
 
 	amount := money.NewFromFloat(amountFloat, transaction.Currency)
 
-	assetId := json.Number(fmt.Sprintf("%d", transaction.AssetID))
 	status := TransactionStatus[transaction.Status]
 
 	lmTransaction := models.Transaction{
@@ -46,7 +42,7 @@ func TransactionHandler(lma *lunchmoney.Client, transaction *shared.Transaction)
 		Date:       time.Date{Date: transaction.Datetime},
 		Payee:      transaction.Description,
 		Amount:     *amount,
-		AssetID:    assetId,
+		AssetID:    *transaction.AssetID,
 		Status:     status,
 	}
 
