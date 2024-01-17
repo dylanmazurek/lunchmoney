@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"syscall"
-	"time"
 
 	"github.com/dylanmazurek/lunchmoney/handlers"
 	"github.com/dylanmazurek/lunchmoney/shared"
@@ -18,15 +16,11 @@ import (
 func main() {
 	ctx := context.Background()
 
-	buildInfo, _ := debug.ReadBuildInfo()
-
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
+	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "15:04:05 01-02"}).
 		Level(zerolog.TraceLevel).
 		With().
 		Timestamp().
 		Caller().
-		Int("pid", os.Getpid()).
-		Str("go_version", buildInfo.GoVersion).
 		Logger()
 
 	log.Logger = logger
